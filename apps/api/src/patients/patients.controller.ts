@@ -1,9 +1,20 @@
-import { Body, Controller, Get, Post, Query, Req, UseGuards, UsePipes } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+  UsePipes,
+} from '@nestjs/common';
 import type { Request } from 'express';
 import type { CursorPage, CreatePatientDto, Patient } from '@careops/shared';
 import { createPatientSchema } from '@careops/shared';
 import { getOrgContext, getSession, OrgContextGuard, Roles } from '../auth/org-context.js';
 import { ZodValidationPipe } from '../common/zod-validation.pipe.js';
+import { patientsListQuerySchema, type PatientsListQuery } from './patients.query.js';
 import { PatientsService } from './patients.service.js';
 
 /**
@@ -29,18 +40,17 @@ export class PatientsController {
   }
 
   @Get()
+  @UsePipes(new ZodValidationPipe(patientsListQuerySchema))
   async list(
     @Req() request: Request,
-    @Query('cursor') cursor?: string,
-    @Query('limit') limit?: string,
+    @Query() query: PatientsListQuery,
   ): Promise<CursorPage<Patient>> {
     const context = getOrgContext(request);
-    const parsedLimit = limit !== undefined ? Math.min(Number(limit) || 20, 100) : undefined;
-    return this.patientsService.listPage(context, cursor, parsedLimit);
+    return this.patientsService.listPage(context, query.cursor, query.limit);
   }
 
   @Get(':patientId')
-  async findOne(@Req() request: Request, patientId: string): Promise<Patient> {
+  async findOne(@Req() request: Request, @Param('patientId') patientId: string): Promise<Patient> {
     const context = getOrgContext(request);
     return this.patientsService.findOne(context, patientId);
   }

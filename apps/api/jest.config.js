@@ -21,6 +21,7 @@ export default {
   testMatch: ['**/*.spec.ts'],
   collectCoverage: true,
   coverageDirectory: 'coverage',
+  coverageReporters: ['text', 'text-summary', 'json-summary'],
   collectCoverageFrom: ['src/**/*.ts', '!src/main.ts', '!src/bootstrap-api.ts'],
   // 80% gate on domain services (spec week-1). Controllers are exercised by
   // the e2e seam (not counted here); the global gate widens in T7.

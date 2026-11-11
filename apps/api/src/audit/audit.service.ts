@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import type { AuditEntry } from '@careops/shared';
+import { auditEntrySchema, type AuditEntry } from '@careops/shared';
 import type { OrgRequestContext } from '../data/org-scoped.repository.js';
 import { AuditEntryDocument, type AuditEntryDoc } from './audit-entry.schema.js';
 
@@ -47,7 +47,9 @@ export class AuditService {
       organizationId: doc.organizationId,
       actorId: doc.actorId,
       actorEmail: doc.actorEmail,
-      action: doc.action,
+      // AuditService.record only writes the three known actions; the stored
+      // string is validated against the shared vocabulary here.
+      action: auditEntrySchema.shape.action.parse(doc.action),
       entity: doc.entity,
       entityId: doc.entityId,
       before: doc.before,
