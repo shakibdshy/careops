@@ -1,5 +1,6 @@
 import request from 'supertest';
 import { Test } from '@nestjs/testing';
+import { MongoMemoryServer } from 'mongodb-memory-server';
 import type { INestApplication } from '@nestjs/common';
 import type { TestingModule } from '@nestjs/testing';
 import type { App } from 'supertest/types.js';
@@ -7,8 +8,12 @@ import { AppModule } from '../src/app.module.js';
 
 describe('Health (e2e)', () => {
   let app: INestApplication<App>;
+  let mongo: MongoMemoryServer;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
+    mongo = await MongoMemoryServer.create();
+    process.env.MONGODB_URI = mongo.getUri('careops-test');
+
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
@@ -18,14 +23,15 @@ describe('Health (e2e)', () => {
     await app.init();
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await app.close();
+    await mongo.stop();
   });
 
-  it('GET /api/health returns ok status with service name', () => {
+  it('GET /api/health reports ok with connected stores', () => {
     return request(app.getHttpServer())
       .get('/api/health')
       .expect(200)
-      .expect({ status: 'ok', service: 'careops-api' });
+      .expect({ status: 'ok', service: 'careops-api', mongo: 'up', redis: 'up' });
   });
 });
