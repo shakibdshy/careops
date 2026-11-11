@@ -9,12 +9,13 @@ const envSchema = z.object({
 
 export type Env = z.infer<typeof envSchema>;
 
-export interface AppConfig {
+/** Validated, app-facing config derived from the env schema. */
+export type AppConfig = {
   port: number;
   mongoUri: string;
   redisUrl: string;
-  nodeEnv: 'development' | 'test' | 'production';
-}
+  nodeEnv: Env['NODE_ENV'];
+};
 
 export class EnvValidationError extends Error {
   constructor(envName: string, cause: string) {

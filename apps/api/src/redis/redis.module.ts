@@ -11,9 +11,11 @@ export const REDIS_CLIENT = Symbol('REDIS_CLIENT');
       provide: REDIS_CLIENT,
       useFactory: (): Redis =>
         new Redis(loadConfig().redisUrl, {
+          // Keep retrying with capped backoff: compose may still be starting
+          // Redis when the API boots. Health probes are timeout-guarded, so a
+          // not-yet-ready Redis renders as "down" instead of hanging requests.
           maxRetriesPerRequest: null,
-          // Fail fast on connect errors instead of retrying forever in tests.
-          retryStrategy: (times: number) => (times > 3 ? null : Math.min(times * 200, 600)),
+          retryStrategy: (times: number) => Math.min(times * 200, 2000),
         }),
     },
   ],

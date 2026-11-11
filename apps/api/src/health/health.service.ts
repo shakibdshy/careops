@@ -14,15 +14,19 @@ export interface MongoDbAccessor {
 }
 
 async function reachable(promise: Promise<unknown>): Promise<boolean> {
-  return Promise.race([
+  return new Promise<boolean>((resolve) => {
+    const timer = setTimeout(() => resolve(false), PING_TIMEOUT_MS);
     promise.then(
-      () => true,
-      () => false,
-    ),
-    new Promise<boolean>((resolve) => {
-      setTimeout(() => resolve(false), PING_TIMEOUT_MS);
-    }),
-  ]);
+      () => {
+        clearTimeout(timer);
+        resolve(true);
+      },
+      () => {
+        clearTimeout(timer);
+        resolve(false);
+      },
+    );
+  });
 }
 
 @Injectable()
