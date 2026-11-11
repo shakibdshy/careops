@@ -1,8 +1,46 @@
-import { Body, Controller, Get, NotFoundException, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  NotFoundException,
+  Post,
+  Req,
+  UseGuards,
+  UsePipes,
+} from '@nestjs/common';
 import type { Request } from 'express';
-import type { CreateInvitationDto, OrganizationCurrent, Invitation } from '@careops/shared';
+import {
+  createInvitationSchema,
+  type CreateInvitationDto,
+  type Invitation,
+  type OrganizationCurrent,
+} from '@careops/shared';
 import { getAuth } from '../auth/auth.instance.js';
-import { getFullOrganization, getOrgContext, OrgContextGuard, Roles } from '../auth/org-context.js';
+import {
+  getFullOrganization,
+  getOrgContext,
+  headersFromRequest,
+  OrgContextGuard,
+  Roles,
+} from '../auth/org-context.js';
+import { ZodValidationPipe } from '../common/zod-validation.pipe.js';
+import type { FullOrganization } from '../auth/org-context.js';
+
+function toInvitationDto(invitation: {
+  id: string;
+  email: string;
+  role: string;
+  status: string;
+  organizationId: string;
+}): Invitation {
+  return {
+    id: invitation.id,
+    email: invitation.email,
+    role: invitation.role as Invitation['role'],
+    status: invitation.status,
+    organizationId: invitation.organizationId,
+  };
+}
 
 /**
  * Thin surface over BetterAuth's organization plugin (ADR-0004): creation
@@ -32,38 +70,27 @@ export class OrganizationsController {
 
   @Post('invitations')
   @Roles('admin', 'owner')
+  @UsePipes(new ZodValidationPipe(createInvitationSchema))
   async invite(@Req() request: Request, @Body() body: CreateInvitationDto): Promise<Invitation> {
-    const headers = new Headers(request.headers as Record<string, string>);
     const org = getOrgContext(request);
     const invitation = await getAuth().api.createInvitation({
       body: { email: body.email, role: body.role, organizationId: org.organizationId },
-      headers,
+      headers: headersFromRequest(request),
     });
-    return {
-      id: invitation.id,
-      email: invitation.email,
-      role: invitation.role,
-      status: invitation.status,
-      organizationId: invitation.organizationId,
-    };
+    return toInvitationDto(invitation);
   }
 
   @Get('invitations/:invitationId')
   async invitation(@Req() request: Request, invitationId: string): Promise<Invitation> {
-    const headers = new Headers(request.headers as Record<string, string>);
     const invitation = await getAuth().api.getInvitation({
       query: { id: invitationId },
-      headers,
+      headers: headersFromRequest(request),
     });
     if (!invitation) {
       throw new NotFoundException('Invitation not found');
     }
-    return {
-      id: invitation.id,
-      email: invitation.email,
-      role: invitation.role,
-      status: invitation.status,
-      organizationId: invitation.organizationId,
-    };
+    return toInvitationDto(invitation);
   }
 }
+
+export type { FullOrganization };

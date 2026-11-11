@@ -1,4 +1,5 @@
 import type { Model, QueryFilter, UpdateQuery, SortOrder, HydratedDocument } from 'mongoose';
+import type { CursorPage } from '@careops/shared';
 
 /**
  * Context every org-scoped query must carry. There is deliberately no way to
@@ -13,15 +14,16 @@ export interface OrgRequestContext {
 
 /**
  * Base repository for tenant-owned Mongoose collections. All read/write
- * methods prepend `organizationId` to the caller's filter; callers cannot
- * bypass it — there is no unscoped method. Compound indexes on the collection
+ * methods merge `organizationId` into the caller's filter with the org scope
+ * applied last, so a caller-supplied organizationId can never widen the
+ * query — there is no unscoped method. Compound indexes on the collection
  * must lead with `organizationId` (see ADR-0006).
  */
 export abstract class OrgScopedRepository<T extends { _id: unknown }> {
   protected constructor(private readonly model: Model<T>) {}
 
   protected orgFilter(context: OrgRequestContext, filter: QueryFilter<T> = {}): QueryFilter<T> {
-    return { organizationId: context.organizationId, ...filter };
+    return { ...filter, organizationId: context.organizationId };
   }
 
   async create(context: OrgRequestContext, data: Omit<T, '_id'>): Promise<HydratedDocument<T>> {
@@ -37,6 +39,11 @@ export abstract class OrgScopedRepository<T extends { _id: unknown }> {
     return this.model.findOne(this.orgFilter(context, filter)).exec();
   }
 
+  /**
+   * Cursor-paginated page (ADR-0008): `_id` range scan, O(pageSize) at any
+   * depth, stable under concurrent inserts. Fetches limit+1 to detect
+   * hasMore; the sentinel never reaches the caller.
+   */
   async findPage(
     context: OrgRequestContext,
     options: {
@@ -46,20 +53,27 @@ export abstract class OrgScopedRepository<T extends { _id: unknown }> {
       afterId?: string;
       sort?: Record<string, 1 | -1 | { $meta: string }>;
     },
-  ): Promise<HydratedDocument<T>[]> {
+  ): Promise<CursorPage<HydratedDocument<T>>> {
     const { filter, limit, afterId, sort } = options;
     const query: QueryFilter<T> = this.orgFilter(context, filter);
     if (afterId) {
-      // Cursor pagination per ADR-0008: _id range scan, O(pageSize) at depth.
       // _id is ObjectId-typed in mongoose's strict query casting; the string
       // form is valid at runtime and cast through the raw filter record.
       (query as Record<string, unknown>)['_id'] = { $gt: afterId };
     }
-    return this.model
+    const docs = await this.model
       .find(query)
       .sort({ _id: 1, ...sort })
       .limit(limit + 1)
       .exec();
+    const hasMore = docs.length > limit;
+    const items = hasMore ? docs.slice(0, limit) : docs;
+    const last = items.at(-1);
+    return {
+      items,
+      nextCursor: hasMore && last ? String(last._id) : undefined,
+      hasMore,
+    };
   }
 
   async findOneAndUpdate(
