@@ -1,4 +1,7 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
+// Resolve the API's .env regardless of the caller's working directory
+// (bun run boot executes this script from the repo root).
+dotenv.config({ path: new URL('../.env', import.meta.url) });
 import { MongoClient } from 'mongodb';
 import mongoose from 'mongoose';
 import { loadConfig } from './config/env.js';
