@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
-import { healthResponseSchema } from '@careops/shared';
+import { healthResponseSchema, type HealthResponse } from '@careops/shared';
 
 export const Route = createFileRoute('/')({ component: Home });
 
 type HealthState =
   | { kind: 'checking' }
-  | { kind: 'ok'; status: string; service: string }
+  | { kind: 'ok'; response: HealthResponse }
   | { kind: 'error'; message: string };
 
 function Home() {
@@ -18,7 +18,7 @@ function Home() {
       .then((body) => {
         const parsed = healthResponseSchema.safeParse(body);
         if (parsed.success) {
-          setHealth({ kind: 'ok', status: parsed.data.status, service: parsed.data.service });
+          setHealth({ kind: 'ok', response: parsed.data });
         } else {
           setHealth({ kind: 'error', message: 'API response failed contract validation' });
         }
@@ -33,7 +33,7 @@ function Home() {
         {health.kind === 'checking' && <span className="text-gray-500">Checking API…</span>}
         {health.kind === 'ok' && (
           <span className="text-green-600" data-testid="health-ok">
-            API healthy: {health.service} reports {health.status}
+            API healthy: {health.response.service} reports {health.response.status}
           </span>
         )}
         {health.kind === 'error' && (

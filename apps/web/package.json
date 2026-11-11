@@ -7,7 +7,6 @@
   },
   "scripts": {
     "dev": "vite dev --port 3000",
-    "generate-routes": "vite build",
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint .",

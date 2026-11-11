@@ -12,6 +12,8 @@
     "target": "ES2023",
     "outDir": "./dist",
     "rootDir": ".",
+    // NestJS dependency injection assigns constructor params at runtime, so
+    // initialized-property checking cannot hold for injectable classes.
     "strictPropertyInitialization": false,
     "types": ["node", "jest"]
   },

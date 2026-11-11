@@ -6,7 +6,6 @@
   "scripts": {
     "dev": "nest start --watch",
     "build": "nest build",
-    "start:prod": "node dist/main.js",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "jest && jest -c jest.e2e.config.js",

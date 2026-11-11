@@ -15,9 +15,9 @@ export default tseslint.config(
       '**/.vinxi/**',
       '**/routeTree.gen.ts',
       '**/jest*.config.js',
-      '**/*.config.{js,mjs,ts}',
+      'commitlint.config.mjs',
+      // No tsconfig covers the root; the config file cannot lint itself.
       'eslint.config.mjs',
-      'commitlint.config.js',
     ],
   },
   eslint.configs.recommended,
