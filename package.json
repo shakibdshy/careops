@@ -15,6 +15,8 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
+    "boot": "(test -f apps/api/.env || cp .env.example apps/api/.env) && docker compose up -d && turbo run dev",
+    "boot:infra": "docker compose up -d",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prepare": "husky"
