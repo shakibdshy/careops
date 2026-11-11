@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   patientSchema,
@@ -147,9 +147,13 @@ function PatientsPage() {
           {patientsQuery.data.pages.flatMap((page) =>
             page.items.map((patient) => (
               <li key={patient.id} className="py-2" data-testid="patient-row">
-                <span className="font-medium">
+                <Link
+                  to="/patients/$patientId"
+                  params={{ patientId: patient.id }}
+                  className="font-medium underline"
+                >
                   {patient.firstName} {patient.lastName}
-                </span>{' '}
+                </Link>{' '}
                 <span className="text-gray-600">born {patient.dateOfBirth.slice(0, 10)}</span>
               </li>
             )),

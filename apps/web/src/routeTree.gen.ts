@@ -10,15 +10,22 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AuditRouteImport } from './routes/audit'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as PatientsRouteImport } from './routes/patients'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as WorkspaceRouteImport } from './routes/workspace'
 import { Route as InviteInvitationIdRouteImport } from './routes/invite.$invitationId'
+import { Route as PatientsPatientIdRouteImport } from './routes/patients_.$patientId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuditRoute = AuditRouteImport.update({
+  id: '/audit',
+  path: '/audit',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -46,66 +53,85 @@ const InviteInvitationIdRoute = InviteInvitationIdRouteImport.update({
   path: '/invite/$invitationId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PatientsPatientIdRoute = PatientsPatientIdRouteImport.update({
+  id: '/patients_/$patientId',
+  path: '/patients/$patientId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/audit': typeof AuditRoute
   '/login': typeof LoginRoute
   '/patients': typeof PatientsRoute
   '/signup': typeof SignupRoute
   '/workspace': typeof WorkspaceRoute
   '/invite/$invitationId': typeof InviteInvitationIdRoute
+  '/patients/$patientId': typeof PatientsPatientIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/audit': typeof AuditRoute
   '/login': typeof LoginRoute
   '/patients': typeof PatientsRoute
   '/signup': typeof SignupRoute
   '/workspace': typeof WorkspaceRoute
   '/invite/$invitationId': typeof InviteInvitationIdRoute
+  '/patients/$patientId': typeof PatientsPatientIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/audit': typeof AuditRoute
   '/login': typeof LoginRoute
   '/patients': typeof PatientsRoute
   '/signup': typeof SignupRoute
   '/workspace': typeof WorkspaceRoute
   '/invite/$invitationId': typeof InviteInvitationIdRoute
+  '/patients_/$patientId': typeof PatientsPatientIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/audit'
     | '/login'
     | '/patients'
     | '/signup'
     | '/workspace'
     | '/invite/$invitationId'
+    | '/patients/$patientId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/audit'
     | '/login'
     | '/patients'
     | '/signup'
     | '/workspace'
     | '/invite/$invitationId'
+    | '/patients/$patientId'
   id:
     | '__root__'
     | '/'
+    | '/audit'
     | '/login'
     | '/patients'
     | '/signup'
     | '/workspace'
     | '/invite/$invitationId'
+    | '/patients_/$patientId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AuditRoute: typeof AuditRoute
   LoginRoute: typeof LoginRoute
   PatientsRoute: typeof PatientsRoute
   SignupRoute: typeof SignupRoute
   WorkspaceRoute: typeof WorkspaceRoute
   InviteInvitationIdRoute: typeof InviteInvitationIdRoute
+  PatientsPatientIdRoute: typeof PatientsPatientIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -115,6 +141,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/audit': {
+      id: '/audit'
+      path: '/audit'
+      fullPath: '/audit'
+      preLoaderRoute: typeof AuditRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -152,16 +185,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InviteInvitationIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/patients_/$patientId': {
+      id: '/patients_/$patientId'
+      path: '/patients/$patientId'
+      fullPath: '/patients/$patientId'
+      preLoaderRoute: typeof PatientsPatientIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AuditRoute: AuditRoute,
   LoginRoute: LoginRoute,
   PatientsRoute: PatientsRoute,
   SignupRoute: SignupRoute,
   WorkspaceRoute: WorkspaceRoute,
   InviteInvitationIdRoute: InviteInvitationIdRoute,
+  PatientsPatientIdRoute: PatientsPatientIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

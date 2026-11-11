@@ -28,12 +28,16 @@ function fakeRepo(
     create: () => Promise<PatientDoc>;
     findOne: () => Promise<PatientDoc | null>;
     findPage: () => Promise<CursorPage<PatientDoc>>;
+    findOneAndUpdate: () => Promise<PatientDoc | null>;
+    findOneAndDelete: () => Promise<PatientDoc | null>;
   }>,
 ): PatientRepository {
   const base = {
     create: async () => patientDoc(),
     findOne: async () => patientDoc(),
     findPage: async () => ({ items: [patientDoc()], nextCursor: undefined, hasMore: false }),
+    findOneAndUpdate: async () => patientDoc({ firstName: 'Edited' }),
+    findOneAndDelete: async () => patientDoc(),
   };
   const merged = { ...base, ...overrides };
   return merged as unknown as PatientRepository;
@@ -158,5 +162,53 @@ describe('PatientsService', () => {
     const service = new PatientsService(repo, fakeAudit());
     await service.listPage(context);
     expect(observed[0]?.limit).toBe(20);
+  });
+
+  it('updates a patient and writes an audit entry with before→after', async () => {
+    const audit = fakeAudit();
+    const service = new PatientsService(fakeRepo({}), audit);
+    const patient = await service.update(context, actor, 'p1', { firstName: 'Edited' });
+    expect(patient.firstName).toBe('Edited');
+    expect(audit.records).toHaveLength(1);
+    const capture = audit.records[0] as {
+      action: string;
+      before: { firstName: string };
+      after: { firstName: string };
+    };
+    expect(capture.action).toBe('update');
+    expect(capture.before.firstName).toBe('Ada');
+    expect(capture.after.firstName).toBe('Edited');
+  });
+
+  it('throws NotFound when updating a patient outside the organization', async () => {
+    const service = new PatientsService(fakeRepo({ findOne: async () => null }), fakeAudit());
+    await expect(
+      service.update(context, actor, 'missing', { firstName: 'X' }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('deletes a patient and writes an audit entry retaining the before-state', async () => {
+    const audit = fakeAudit();
+    const service = new PatientsService(fakeRepo({}), audit);
+    await service.remove(context, actor, 'p1');
+    expect(audit.records).toHaveLength(1);
+    const capture = audit.records[0] as {
+      action: string;
+      before: { firstName: string };
+      after: unknown;
+    };
+    expect(capture.action).toBe('delete');
+    expect(capture.before.firstName).toBe('Ada');
+    expect(capture.after).toBeNull();
+  });
+
+  it('throws NotFound when deleting a patient outside the organization', async () => {
+    const service = new PatientsService(
+      fakeRepo({ findOneAndDelete: async () => null }),
+      fakeAudit(),
+    );
+    await expect(service.remove(context, actor, 'missing')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 });

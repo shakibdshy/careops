@@ -118,6 +118,15 @@ function Workspace() {
       >
         Sign out
       </button>
+      <p className="mt-6">
+        <a href="/patients" className="underline" data-testid="nav-patients">
+          Patients
+        </a>{' '}
+        ·{' '}
+        <a href="/audit" className="underline" data-testid="nav-audit">
+          Audit Entries
+        </a>
+      </p>
       <OrgSection />
     </div>
   );

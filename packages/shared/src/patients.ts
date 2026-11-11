@@ -33,6 +33,9 @@ export type CreatePatientDto = z.infer<typeof createPatientSchema>;
 export const patientsPageSchema = cursorPage(patientSchema);
 export type PatientsPage = z.infer<typeof patientsPageSchema>;
 
+export const updatePatientSchema = createPatientSchema.partial();
+export type UpdatePatientDto = z.infer<typeof updatePatientSchema>;
+
 /** An immutable who/what/when/before→after record of a mutation. */
 export const auditEntrySchema = z.object({
   id: z.string(),
@@ -47,3 +50,7 @@ export const auditEntrySchema = z.object({
   at: z.string(),
 });
 export type AuditEntry = z.infer<typeof auditEntrySchema>;
+
+/** Paginated audit list: newest first, cursor is the last entry's id. */
+export const auditEntriesPageSchema = cursorPage(auditEntrySchema);
+export type AuditEntriesPage = z.infer<typeof auditEntriesPageSchema>;

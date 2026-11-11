@@ -42,6 +42,14 @@ export async function apiPost<S extends ZodType>(
   return parsed.data;
 }
 
+export async function apiDelete(path: string): Promise<void> {
+  const res = await fetch(path, { method: 'DELETE' });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => undefined)) as { message?: string } | undefined;
+    throw new Error(body?.message ?? `DELETE ${path} failed (${res.status})`);
+  }
+}
+
 /** Field errors from a failed POST, for form-level display. */
 export function fieldErrorsOf(error: unknown): Array<{ field: string; message: string }> {
   const fieldErrors = (error as { fieldErrors?: unknown }).fieldErrors;
