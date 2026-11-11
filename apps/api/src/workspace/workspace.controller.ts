@@ -1,5 +1,6 @@
 import { Controller, Get, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
+import type { WorkspaceMe } from '@careops/shared';
 import { AuthGuard, getSession } from '../auth/auth.guard.js';
 
 /**
@@ -10,7 +11,7 @@ import { AuthGuard, getSession } from '../auth/auth.guard.js';
 @UseGuards(AuthGuard)
 export class WorkspaceController {
   @Get('me')
-  me(@Req() request: Request): { user: { id: string; email: string; name: string } } {
+  me(@Req() request: Request): WorkspaceMe {
     const session = getSession(request);
     return {
       user: {

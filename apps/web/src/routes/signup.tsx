@@ -27,7 +27,7 @@ function Signup() {
 
   return (
     <div className="mx-auto mt-16 max-w-sm p-6">
-      <h1 className="text-2xl font-bold">Create your CareOps account</h1>
+      <h1 className="text-2xl font-bold">Sign up for CareOps</h1>
       <form
         onSubmit={(e) => {
           void onSubmit(e);

@@ -54,7 +54,7 @@ function Home() {
         </a>{' '}
         or{' '}
         <a href="/signup" className="underline">
-          create an account
+          sign up
         </a>
         {' · '}
         <a href="/workspace" className="underline">

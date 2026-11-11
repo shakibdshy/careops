@@ -14,3 +14,7 @@ roles) comes from BetterAuth's organization plugin rather than custom tables.
   invitation) are owned by BetterAuth's adapter and never modeled in Mongoose.
 - Domain code reads org/user context from the verified session, never from the request
   body.
+- Auth endpoints (/api/auth/*) speak BetterAuth's native error contract
+  ({code, message, statusCode}), not the shared domain taxonomy — the BetterAuth
+  client depends on its own shape. The shared taxonomy governs domain endpoints;
+  tests assert each boundary with its own schema.

@@ -73,13 +73,10 @@ export class AllExceptionsFilter implements ExceptionFilter {
     }
 
     const detail = exception instanceof Error ? exception.message : String(exception);
+    const statusCode = HttpStatus.INTERNAL_SERVER_ERROR;
     return {
-      statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
-      body: {
-        statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
-        message: 'Internal server error',
-        errors: [],
-      },
+      statusCode,
+      body: { statusCode, message: 'Internal server error', errors: [] },
       logLevel: 'error',
       logMessage: `Unhandled exception: ${detail}`,
     };

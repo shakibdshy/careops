@@ -5,15 +5,16 @@ import { z } from 'zod';
 import type { INestApplication } from '@nestjs/common';
 import type { TestingModule } from '@nestjs/testing';
 import type { App } from 'supertest/types.js';
-import { errorResponseSchema } from '@careops/shared';
+import { errorResponseSchema, workspaceMeSchema } from '@careops/shared';
 import { AppModule } from '../src/app.module.js';
 import { bootstrapApi } from '../src/bootstrap-api.js';
 
 const signUpResponseSchema = z.object({
   user: z.object({ id: z.string(), email: z.string(), name: z.string() }),
 });
-const workspaceMeSchema = z.object({
-  user: z.object({ email: z.string(), name: z.string() }),
+const betterAuthErrorSchema = z.object({
+  code: z.string(),
+  message: z.string(),
 });
 
 describe('Auth (e2e)', () => {
@@ -63,6 +64,13 @@ describe('Auth (e2e)', () => {
     expect(parsed.user.email).toBe(testUser.email);
   });
 
+  it('sets an httpOnly session cookie', async () => {
+    const res = await agent.post('/api/auth/sign-in/email').send(testUser).expect(200);
+    const cookies: unknown = res.headers['set-cookie'];
+    const cookieHeader = Array.isArray(cookies) ? cookies.join(';') : String(cookies);
+    expect(cookieHeader).toMatch(/HttpOnly/i);
+  });
+
   it('rejects unauthenticated access to protected routes with the shared taxonomy', async () => {
     const res = await request(app.getHttpServer()).get('/api/workspace/me');
     expect(res.status).toBe(401);
@@ -72,11 +80,15 @@ describe('Auth (e2e)', () => {
     });
   });
 
-  it('rejects bad credentials at sign-in', async () => {
-    await request(app.getHttpServer())
+  it('rejects bad credentials at sign-in with the BetterAuth error contract', async () => {
+    // Auth endpoints speak BetterAuth's native error shape, not the domain
+    // taxonomy (ADR-0004 consequences) — the BetterAuth client depends on it.
+    const res = await request(app.getHttpServer())
       .post('/api/auth/sign-in/email')
       .send({ email: testUser.email, password: 'wrong-password' })
       .expect(401);
+    const parsed = betterAuthErrorSchema.parse(res.body);
+    expect(parsed.code.length).toBeGreaterThan(0);
   });
 
   it('signs out and the session stops being valid', async () => {
