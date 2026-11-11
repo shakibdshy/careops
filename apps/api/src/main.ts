@@ -6,6 +6,7 @@ import { loadConfig } from './config/env.js';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bodyParser: false });
+  app.enableShutdownHooks();
   bootstrapApi(app);
   app.setGlobalPrefix('api');
   const { port } = loadConfig();

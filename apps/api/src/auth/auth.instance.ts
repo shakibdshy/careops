@@ -4,6 +4,7 @@ import { mongodbAdapter } from 'better-auth/adapters/mongodb';
 import { loadConfig } from '../config/env.js';
 
 let instance: ReturnType<typeof createAuth> | undefined;
+let client: MongoClient | undefined;
 
 /**
  * The BetterAuth instance. Auth tables are owned by BetterAuth's official
@@ -16,9 +17,16 @@ export function getAuth(): ReturnType<typeof createAuth> {
   return instance;
 }
 
+/** Closes the auth database connection (process shutdown / test teardown). */
+export async function closeAuth(): Promise<void> {
+  await client?.close();
+  client = undefined;
+  instance = undefined;
+}
+
 function createAuth() {
   const config = loadConfig();
-  const client = new MongoClient(config.mongoUri);
+  client = new MongoClient(config.mongoUri);
   const db = client.db();
   return betterAuth({
     secret: config.betterAuthSecret,
