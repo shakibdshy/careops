@@ -5,7 +5,7 @@ export default {
   setupFiles: ['<rootDir>/test/setup-env.ts'],
   testTimeout: 120000,
   transform: {
-    '^.+\\.[jt]sx?$': [
+    '^.+\\.[cm]?[jt]sx?$': [
       '@swc/jest',
       {
         jsc: {

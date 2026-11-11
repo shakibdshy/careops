@@ -48,6 +48,19 @@ function Home() {
           </span>
         )}
       </p>
+      <p className="mt-6">
+        <a href="/login" className="underline">
+          Sign in
+        </a>{' '}
+        or{' '}
+        <a href="/signup" className="underline">
+          create an account
+        </a>
+        {' · '}
+        <a href="/workspace" className="underline">
+          Workspace
+        </a>
+      </p>
     </div>
   );
 }

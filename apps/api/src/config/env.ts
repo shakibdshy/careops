@@ -4,6 +4,9 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3001),
   MONGODB_URI: z.string().min(1),
   REDIS_URL: z.string().min(1),
+  BETTER_AUTH_SECRET: z
+    .string()
+    .min(32, 'must be at least 32 characters (generate: openssl rand -base64 32)'),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 });
 
@@ -14,6 +17,7 @@ export type AppConfig = {
   port: number;
   mongoUri: string;
   redisUrl: string;
+  betterAuthSecret: string;
   nodeEnv: Env['NODE_ENV'];
 };
 
@@ -38,6 +42,7 @@ export function validateEnv(raw: Record<string, string | undefined>): AppConfig 
     port: result.data.PORT,
     mongoUri: result.data.MONGODB_URI,
     redisUrl: result.data.REDIS_URL,
+    betterAuthSecret: result.data.BETTER_AUTH_SECRET,
     nodeEnv: result.data.NODE_ENV,
   };
 }

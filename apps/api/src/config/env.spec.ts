@@ -5,6 +5,7 @@ describe('validateEnv', () => {
     PORT: '3001',
     MONGODB_URI: 'mongodb://localhost:27017/careops',
     REDIS_URL: 'redis://localhost:6379',
+    BETTER_AUTH_SECRET: 'x'.repeat(32),
     NODE_ENV: 'development',
   };
 
@@ -14,6 +15,7 @@ describe('validateEnv', () => {
       port: 3001,
       mongoUri: 'mongodb://localhost:27017/careops',
       redisUrl: 'redis://localhost:6379',
+      betterAuthSecret: 'x'.repeat(32),
       nodeEnv: 'development',
     });
   });
@@ -22,6 +24,7 @@ describe('validateEnv', () => {
     const config = validateEnv({
       MONGODB_URI: 'mongodb://localhost:27017/careops',
       REDIS_URL: 'redis://localhost:6379',
+      BETTER_AUTH_SECRET: 'x'.repeat(32),
     });
     expect(config.port).toBe(3001);
     expect(config.nodeEnv).toBe('development');
@@ -31,6 +34,12 @@ describe('validateEnv', () => {
     const missingMongo = { ...validEnv } as Record<string, string>;
     delete missingMongo.MONGODB_URI;
     expect(() => validateEnv(missingMongo)).toThrow(/MONGODB_URI/);
+  });
+
+  it('fails fast naming the missing auth secret', () => {
+    const missingSecret = { ...validEnv } as Record<string, string>;
+    delete missingSecret.BETTER_AUTH_SECRET;
+    expect(() => validateEnv(missingSecret)).toThrow(/BETTER_AUTH_SECRET/);
   });
 
   it('fails fast naming the invalid variable', () => {
