@@ -1,7 +1,7 @@
 import type { MongoClient } from 'mongodb';
 import { betterAuth } from 'better-auth';
 import { mongodbAdapter } from 'better-auth/adapters/mongodb';
-import { organization } from 'better-auth/plugins';
+import { openAPI, organization } from 'better-auth/plugins';
 import type { AppConfig } from '../config/env.js';
 
 /**
@@ -20,7 +20,8 @@ export function createBetterAuth(config: AppConfig, client: MongoClient) {
     // Organization as its owner (ADR-0006). Invitations and roles come from
     // the plugin. System action — no session exists during signup, so no
     // headers may be passed.
-    plugins: [organization()],
+    // openAPI() exposes GET /api/reference (Scalar UI) documenting every auth endpoint.
+    plugins: [organization(), openAPI()],
     databaseHooks: {
       user: {
         create: {

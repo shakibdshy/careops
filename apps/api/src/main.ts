@@ -7,8 +7,9 @@ import { loadConfig } from './config/env.js';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bodyParser: false });
   app.enableShutdownHooks();
+  // The global prefix is applied inside bootstrapApi BEFORE the OpenAPI
+  // document is generated, so documented paths carry /api.
   bootstrapApi(app);
-  app.setGlobalPrefix('api');
   const { port } = loadConfig();
   await app.listen(port);
 }

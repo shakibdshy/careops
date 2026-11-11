@@ -77,7 +77,7 @@ describe('PatientsService', () => {
     const patient = await service.create(context, actor, {
       firstName: 'Ada',
       lastName: 'Lovelace',
-      dateOfBirth: new Date('1990-12-10'),
+      dateOfBirth: '1990-12-10',
       phone: '555-0100',
       notes: 'first patient',
     });
@@ -153,7 +153,7 @@ describe('PatientsService', () => {
     const patient = await service.create(context, actor, {
       firstName: 'Ada',
       lastName: 'Lovelace',
-      dateOfBirth: new Date('1990-12-10'),
+      dateOfBirth: '1990-12-10',
     });
     expect(patient.phone).toBeUndefined();
     expect(patient.notes).toBeUndefined();
