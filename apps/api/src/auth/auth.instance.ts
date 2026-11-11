@@ -12,7 +12,10 @@ let client: MongoClient | undefined;
  * Mongoose pool against the same database.
  */
 export function getAuth(): ReturnType<typeof createBetterAuth> {
-  instance ??= createBetterAuth(loadConfig(), new MongoClient(loadConfig().mongoUri));
+  if (!instance) {
+    client = new MongoClient(loadConfig().mongoUri);
+    instance = createBetterAuth(loadConfig(), client);
+  }
   return instance;
 }
 

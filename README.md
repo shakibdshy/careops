@@ -5,7 +5,7 @@ records, with an immutable audit trail on every mutation. Built as a
 portfolio-grade, production-shaped week-1 foundation.
 
 [![CI](https://github.com/shakibdshy/careops/actions/workflows/ci.yml/badge.svg)](https://github.com/shakibdshy/careops/actions/workflows/ci.yml)
-[![Coverage](https://img.shields.io/badge/dynamic/json?url=&label=lines&query=$&color=brightgreen)](#testing)
+[![Coverage](https://img.shields.io/badge/coverage-80%25%20gate%20on%20services-brightgreen)](.github/workflows/ci.yml)
 
 > **Not HIPAA-compliant.** CareOps is HIPAA-_minded_ — audit trail on every
 > mutation, validated environment, error taxonomy, no real PHI (all seed data
