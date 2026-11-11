@@ -38,7 +38,6 @@ describe('Auth (e2e)', () => {
 
     app = moduleFixture.createNestApplication({ bodyParser: false });
     bootstrapApi(app);
-    app.setGlobalPrefix('api');
     await app.init();
     agent = request.agent(app.getHttpServer());
   });

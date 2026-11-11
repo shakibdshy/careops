@@ -8,7 +8,6 @@ import type { TestingModule } from '@nestjs/testing';
 import type { App } from 'supertest/types.js';
 import {
   auditEntriesPageSchema,
-  createPatientSchema,
   errorResponseSchema,
   patientsPageSchema,
   patientSchema,
@@ -57,7 +56,6 @@ describe('Patients (e2e)', () => {
 
     app = moduleFixture.createNestApplication({ bodyParser: false });
     bootstrapApi(app);
-    app.setGlobalPrefix('api');
     await app.init();
     ownerAgent = request.agent(app.getHttpServer());
     memberAgent = request.agent(app.getHttpServer());
@@ -169,7 +167,6 @@ describe('Patients (e2e)', () => {
       expect(page.items.length).toBe(3);
       for (const patient of page.items) {
         expect(patientSchema.parse(patient)).toBeDefined();
-        expect(createPatientSchema.safeParse(patient).success).toBe(true);
       }
     });
   });

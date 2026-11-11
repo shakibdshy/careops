@@ -36,7 +36,6 @@ describe('Organizations + RBAC (e2e)', () => {
 
     app = moduleFixture.createNestApplication({ bodyParser: false });
     bootstrapApi(app);
-    app.setGlobalPrefix('api');
     await app.init();
     ownerAgent = request.agent(app.getHttpServer());
     inviteeAgent = request.agent(app.getHttpServer());

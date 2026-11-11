@@ -47,9 +47,9 @@ export class PatientsService {
     actor: PatientActor,
     dto: CreatePatientDto,
   ): Promise<Patient> {
+    // dto.dateOfBirth is an ISO string; mongoose casts it to Date on insert.
     const insert = {
       ...dto,
-      dateOfBirth: dto.dateOfBirth,
       createdAt: new Date(),
       updatedAt: new Date(),
       // The repository insert payload is the persisted shape; extra document
@@ -107,7 +107,7 @@ export class PatientsService {
     const before = await this.patientRepository.findOneAndUpdate(
       context,
       { _id: patientId },
-      { ...dto, dateOfBirth: dto.dateOfBirth, updatedAt: new Date() },
+      { ...dto, updatedAt: new Date() },
       { returnPreUpdate: true },
     );
     if (!before) {

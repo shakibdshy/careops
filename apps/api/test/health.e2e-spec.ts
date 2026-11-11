@@ -5,6 +5,7 @@ import type { INestApplication } from '@nestjs/common';
 import type { TestingModule } from '@nestjs/testing';
 import type { App } from 'supertest/types.js';
 import { AppModule } from '../src/app.module.js';
+import { bootstrapApi } from '../src/bootstrap-api.js';
 
 describe('Health (e2e)', () => {
   let app: INestApplication<App>;
@@ -18,8 +19,8 @@ describe('Health (e2e)', () => {
       imports: [AppModule],
     }).compile();
 
-    app = moduleFixture.createNestApplication();
-    app.setGlobalPrefix('api');
+    app = moduleFixture.createNestApplication({ bodyParser: false });
+    bootstrapApi(app);
     await app.init();
   });
 

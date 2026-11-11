@@ -18,12 +18,13 @@ export type Patient = z.infer<typeof patientSchema>;
 export const createPatientSchema = z.object({
   firstName: z.string().min(1).max(100),
   lastName: z.string().min(1).max(100),
-  dateOfBirth: z.coerce
+  // ISO date string (YYYY-MM-DD), must be in the past. Persisted as a Date;
+  // the contract speaks strings in both directions.
+  dateOfBirth: z.iso
     .date()
-    .refine(
-      (date) => !Number.isNaN(date.getTime()) && date.getTime() <= Date.now(),
-      'must be a date in the past',
-    ),
+    .refine((date) => new Date(`${date}T00:00:00Z`).getTime() <= Date.now(), {
+      message: 'must be a date in the past',
+    }),
   phone: z.string().min(7).max(20).optional(),
   notes: z.string().max(2000).optional(),
 });
