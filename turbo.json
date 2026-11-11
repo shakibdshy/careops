@@ -8,6 +8,9 @@
     "lint": {
       "dependsOn": ["^lint"]
     },
+    // No package defines a `transit` script — per Turborepo's transit-node
+    // pattern this gives `typecheck` correct cache invalidation for changes
+    // in dependency package sources while staying parallel.
     "transit": {
       "dependsOn": ["^transit"]
     },
