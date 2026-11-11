@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
+import { orgRoleSchema, type OrgRole } from '@careops/shared';
 import { getAuth, type CareOpsSession } from './auth.instance.js';
 
 export const SESSION_REQUEST_KEY = 'careopsSession';
@@ -17,16 +18,19 @@ export const FULL_ORG_REQUEST_KEY = 'careopsFullOrg';
 export const ROLE_KEY = 'careopsRequiredRoles';
 
 /** Roles a route requires; the OrgContextGuard checks the active member's role. */
-export function Roles(
-  ...roles: Array<'owner' | 'admin' | 'member'>
-): MethodDecorator & ClassDecorator {
+export function Roles(...roles: OrgRole[]): MethodDecorator & ClassDecorator {
   return SetMetadata(ROLE_KEY, roles);
 }
 
 export interface OrgContext {
   organizationId: string;
   organizationName: string;
-  role: 'owner' | 'admin' | 'member';
+  role: OrgRole;
+}
+
+/** Request headers as a web Headers object for BetterAuth server API calls. */
+export function headersFromRequest(request: Request): Headers {
+  return new Headers(request.headers as Record<string, string>);
 }
 
 /** BetterAuth's full organization record, as resolved by OrgContextGuard. */
@@ -93,12 +97,13 @@ export class OrgContextGuard implements CanActivate {
     if (!me) {
       throw new UnauthorizedException('Not a member of the active organization');
     }
+    // BetterAuth types member.role as string; validate rather than cast so an
+    // unexpected role value fails loudly instead of bypassing @Roles checks.
+    const role = orgRoleSchema.catch('member').parse(me.role);
     const orgContext: OrgContext = {
       organizationId: fullOrg.id,
       organizationName: fullOrg.name,
-      // BetterAuth types member.role as string; BetterAuth's organization
-      // plugin only produces owner/admin/member.
-      role: me.role as OrgContext['role'],
+      role,
     };
     Object.defineProperty(request, ORG_CONTEXT_REQUEST_KEY, {
       value: orgContext,
@@ -113,10 +118,10 @@ export class OrgContextGuard implements CanActivate {
       writable: true,
     });
 
-    const requiredRoles = this.reflector.getAllAndOverride<Array<'owner' | 'admin' | 'member'>>(
-      ROLE_KEY,
-      [context.getHandler(), context.getClass()],
-    );
+    const requiredRoles = this.reflector.getAllAndOverride<OrgRole[]>(ROLE_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
     if (requiredRoles && !requiredRoles.includes(orgContext.role)) {
       throw new ForbiddenException(
         `Requires role: ${requiredRoles.join(' or ')} (you are ${orgContext.role})`,

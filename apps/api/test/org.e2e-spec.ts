@@ -125,6 +125,24 @@ describe('Organizations + RBAC (e2e)', () => {
       expect(parsed.message).toMatch(/admin or owner/);
     });
 
+    it('denies a member creating invitations with 403 in the shared taxonomy', async () => {
+      // The invitee is now a member of the owner's organization.
+      const res = await inviteeAgent
+        .post('/api/organizations/invitations')
+        .send({ email: 'someone@else.test', role: 'member' });
+      expect(res.status).toBe(403);
+      errorResponseSchema.parse(res.body);
+    });
+
+    it('rejects an invalid invitation payload with field-level errors', async () => {
+      const res = await ownerAgent
+        .post('/api/organizations/invitations')
+        .send({ email: 'not-an-email', role: 'member' });
+      expect(res.status).toBe(400);
+      const parsed = errorResponseSchema.parse(res.body);
+      expect(parsed.errors.some((error) => error.field === 'email')).toBe(true);
+    });
+
     it('allows an owner an admin-only route', async () => {
       await ownerAgent.get('/api/workspace/admin-probe').expect(200);
     });

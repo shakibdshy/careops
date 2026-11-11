@@ -6,7 +6,7 @@ import {
   HttpStatus,
   Logger,
 } from '@nestjs/common';
-import type { ErrorResponse, FieldError } from '@careops/shared';
+import { fieldErrorSchema, type ErrorResponse, type FieldError } from '@careops/shared';
 import { ZodError } from 'zod';
 import type { Response } from 'express';
 
@@ -58,11 +58,19 @@ export class AllExceptionsFilter implements ExceptionFilter {
         typeof payload === 'object' && payload !== null && 'message' in payload
           ? payload.message
           : undefined;
-      const detailErrors = Array.isArray(payloadMessage)
-        ? payloadMessage
-            .filter((m): m is string => typeof m === 'string')
-            .map((m) => ({ field: 'unknown', message: m }))
-        : [];
+      // Structured field errors (e.g. from ZodValidationPipe) when present;
+      // otherwise collapse a string-array message into field entries.
+      const parsedErrors =
+        typeof payload === 'object' && payload !== null && 'errors' in payload
+          ? fieldErrorSchema.array().safeParse(payload.errors)
+          : undefined;
+      const detailErrors: FieldError[] = parsedErrors?.success
+        ? parsedErrors.data
+        : Array.isArray(payloadMessage)
+          ? payloadMessage
+              .filter((m): m is string => typeof m === 'string')
+              .map((m) => ({ field: 'unknown', message: m }))
+          : [];
       const message = typeof payloadMessage === 'string' ? payloadMessage : exception.message;
       return {
         statusCode,

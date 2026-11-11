@@ -15,8 +15,12 @@ function InvitePage() {
   const navigate = useNavigate();
   const { data: session, isPending } = authClient.useSession();
   const [state, setState] = useState<InviteState>({ kind: 'loading' });
+  const [acceptError, setAcceptError] = useState<string | undefined>();
 
   useEffect(() => {
+    if (!session) {
+      return;
+    }
     fetch(`/api/organizations/invitations/${invitationId}`)
       .then(async (res) => {
         if (!res.ok) {
@@ -32,13 +36,15 @@ function InvitePage() {
         }
       })
       .catch(() => setState({ kind: 'error', message: 'Could not load the invitation' }));
-  }, [invitationId]);
+  }, [invitationId, session]);
 
   async function onAccept() {
+    setAcceptError(undefined);
     const { error: acceptError } = await authClient.organization.acceptInvitation({
       invitationId,
     });
     if (acceptError) {
+      setAcceptError(acceptError.message ?? 'Could not accept the invitation');
       return;
     }
     await navigate({ to: '/workspace' });
@@ -70,6 +76,11 @@ function InvitePage() {
         <p className="mt-4" data-testid="invite-details">
           You have been invited to join as <strong>{state.invitation.role}</strong> (
           {state.invitation.email}).
+        </p>
+      )}
+      {acceptError && (
+        <p className="mt-4 text-red-600" data-testid="accept-error">
+          {acceptError}
         </p>
       )}
       {state.kind === 'ready' && (
