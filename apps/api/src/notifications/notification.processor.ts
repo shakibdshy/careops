@@ -9,8 +9,9 @@ import type { PatientCreatedJob } from './notifications.tokens.js';
 
 /**
  * Delivery is stubbed in week 1 (logged); week 2 swaps in real email. The
- * processor is idempotent per job id — BullMQ keys dedup on it, so a
- * redelivered job (worker crash mid-process) never double-sends.
+ * job id is the idempotency key (notifications.tokens.ts) — in-flight
+ * duplicates collapse; week 2 pairs it with storage-side dedup for real
+ * side effects.
  */
 @Injectable()
 export class NotificationProcessor implements OnModuleInit, OnApplicationShutdown {

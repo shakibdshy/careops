@@ -88,7 +88,11 @@ async function main(): Promise<void> {
       body: { email, role, organizationId: org.id },
       headers: ownerHeaders,
     });
-    const memberHeaders = await sessionHeaders(auth, email, MEMBER.password);
+    const memberHeaders = await sessionHeaders(
+      auth,
+      email,
+      email === ADMIN.email ? ADMIN.password : MEMBER.password,
+    );
     console.log('SEED: accepting as', email);
     await auth.api.acceptInvitation({
       body: { invitationId: invitation.id },
@@ -102,7 +106,10 @@ async function main(): Promise<void> {
 
   const ownerId = String(ownerUser._id);
   for (const patient of PATIENTS) {
-    await db.collection('patient').insertOne({
+    // Direct collection writes: the org-scoped repository base lives in the
+    // Nest process — the seed runs outside it and scopes organizationId by
+    // hand (same discriminator-key guarantee, no app code involved).
+    const inserted = await db.collection('patient').insertOne({
       organizationId: org.id,
       ...patient,
       dateOfBirth: new Date(patient.dateOfBirth),
@@ -115,7 +122,7 @@ async function main(): Promise<void> {
       actorEmail: OWNER.email,
       action: 'create',
       entity: 'patient',
-      entityId: 'seeded',
+      entityId: String(inserted.insertedId),
       before: null,
       after: patient,
       at: new Date(),
