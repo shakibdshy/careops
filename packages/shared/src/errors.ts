@@ -13,3 +13,9 @@ export const errorResponseSchema = z.object({
   errors: z.array(fieldErrorSchema),
 });
 export type ErrorResponse = z.infer<typeof errorResponseSchema>;
+
+/** Placeholder protected-route response (replaced by org context in T4). */
+export const workspaceMeSchema = z.object({
+  user: z.object({ id: z.string(), email: z.string(), name: z.string() }),
+});
+export type WorkspaceMe = z.infer<typeof workspaceMeSchema>;

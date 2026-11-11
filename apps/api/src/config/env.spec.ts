@@ -1,11 +1,12 @@
 import { validateEnv } from './env.js';
 
 describe('validateEnv', () => {
+  const testSecret = 'x'.repeat(32);
   const validEnv = {
     PORT: '3001',
     MONGODB_URI: 'mongodb://localhost:27017/careops',
     REDIS_URL: 'redis://localhost:6379',
-    BETTER_AUTH_SECRET: 'x'.repeat(32),
+    BETTER_AUTH_SECRET: testSecret,
     NODE_ENV: 'development',
   };
 
@@ -15,7 +16,7 @@ describe('validateEnv', () => {
       port: 3001,
       mongoUri: 'mongodb://localhost:27017/careops',
       redisUrl: 'redis://localhost:6379',
-      betterAuthSecret: 'x'.repeat(32),
+      betterAuthSecret: testSecret,
       nodeEnv: 'development',
     });
   });
@@ -24,7 +25,7 @@ describe('validateEnv', () => {
     const config = validateEnv({
       MONGODB_URI: 'mongodb://localhost:27017/careops',
       REDIS_URL: 'redis://localhost:6379',
-      BETTER_AUTH_SECRET: 'x'.repeat(32),
+      BETTER_AUTH_SECRET: testSecret,
     });
     expect(config.port).toBe(3001);
     expect(config.nodeEnv).toBe('development');
