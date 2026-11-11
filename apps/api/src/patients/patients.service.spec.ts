@@ -1,8 +1,13 @@
+import type { Queue } from 'bullmq';
 import { NotFoundException } from '@nestjs/common';
 import type { CursorPage } from '@careops/shared';
 import { PatientsService } from './patients.service.js';
 import type { PatientRepository } from './patient.repository.js';
 import { AuditService } from '../audit/audit.service.js';
+import {
+  patientCreatedJobId,
+  type PatientCreatedJob,
+} from '../notifications/notifications.tokens.js';
 import type { PatientDoc } from './patient.schema.js';
 
 const context = { organizationId: 'org-1' };
@@ -43,6 +48,17 @@ function fakeRepo(
   return merged as unknown as PatientRepository;
 }
 
+function fakeQueue(): Queue<PatientCreatedJob> & { added: Array<Record<string, unknown>> } {
+  const added: Array<Record<string, unknown>> = [];
+  return {
+    add: async (name: string, data: Record<string, unknown>, options?: Record<string, unknown>) => {
+      added.push({ name, data, options });
+      return {} as never;
+    },
+    added,
+  } as unknown as Queue<PatientCreatedJob> & { added: Array<Record<string, unknown>> };
+}
+
 function fakeAudit(): AuditService & { records: unknown[] } {
   const records: unknown[] = [];
   const service = Object.create(AuditService.prototype) as AuditService & { records: unknown[] };
@@ -56,7 +72,8 @@ function fakeAudit(): AuditService & { records: unknown[] } {
 describe('PatientsService', () => {
   it('creates a patient and writes an audit entry with before=null', async () => {
     const audit = fakeAudit();
-    const service = new PatientsService(fakeRepo({}), audit);
+    const queue = fakeQueue();
+    const service = new PatientsService(fakeRepo({}), audit, queue);
     const patient = await service.create(context, actor, {
       firstName: 'Ada',
       lastName: 'Lovelace',
@@ -78,16 +95,29 @@ describe('PatientsService', () => {
     expect(capture.entity).toBe('patient');
     expect(capture.before).toBeNull();
     expect(capture.after.firstName).toBe('Ada');
+    expect(queue.added).toHaveLength(1);
+    const job = queue.added[0] as {
+      name: string;
+      data: { patientId: string };
+      options: { jobId: string };
+    };
+    expect(job.name).toBe('patient.created');
+    expect(job.data.patientId).toBe('p1');
+    expect(job.options.jobId).toBe(patientCreatedJobId('p1'));
   });
 
   it('returns a patient found within the organization', async () => {
-    const service = new PatientsService(fakeRepo({}), fakeAudit());
+    const service = new PatientsService(fakeRepo({}), fakeAudit(), fakeQueue());
     const patient = await service.findOne(context, 'p1');
     expect(patient.id).toBe('p1');
   });
 
   it('throws NotFound for a patient outside the organization', async () => {
-    const service = new PatientsService(fakeRepo({ findOne: async () => null }), fakeAudit());
+    const service = new PatientsService(
+      fakeRepo({ findOne: async () => null }),
+      fakeAudit(),
+      fakeQueue(),
+    );
     await expect(service.findOne(context, 'missing')).rejects.toBeInstanceOf(NotFoundException);
   });
 
@@ -97,6 +127,7 @@ describe('PatientsService', () => {
         findPage: async () => ({ items: [patientDoc()], nextCursor: 'p1', hasMore: true }),
       }),
       fakeAudit(),
+      fakeQueue(),
     );
     const page = await service.listPage(context, undefined, 20);
     expect(page.items).toHaveLength(1);
@@ -105,7 +136,7 @@ describe('PatientsService', () => {
   });
 
   it('returns nextCursor undefined on the last page', async () => {
-    const service = new PatientsService(fakeRepo({}), fakeAudit());
+    const service = new PatientsService(fakeRepo({}), fakeAudit(), fakeQueue());
     const page = await service.listPage(context, undefined, 20);
     expect(page.nextCursor).toBeUndefined();
     expect(page.hasMore).toBe(false);
@@ -117,6 +148,7 @@ describe('PatientsService', () => {
         create: async () => patientDoc({ phone: undefined, notes: undefined }),
       }),
       fakeAudit(),
+      fakeQueue(),
     );
     const patient = await service.create(context, actor, {
       firstName: 'Ada',
@@ -135,7 +167,7 @@ describe('PatientsService', () => {
         return { items: [], nextCursor: undefined, hasMore: false };
       },
     } as unknown as PatientRepository;
-    const service = new PatientsService(repo, fakeAudit());
+    const service = new PatientsService(repo, fakeAudit(), fakeQueue());
     await service.listPage(context, 'cursor-42', 5);
     expect(observed[0]).toEqual({ limit: 5, afterId: 'cursor-42' });
   });
@@ -144,6 +176,7 @@ describe('PatientsService', () => {
     const service = new PatientsService(
       fakeRepo({ findPage: async () => ({ items: [], nextCursor: undefined, hasMore: false }) }),
       fakeAudit(),
+      fakeQueue(),
     );
     const page = await service.listPage(context, 'end-cursor', 20);
     expect(page.items).toEqual([]);
@@ -159,7 +192,7 @@ describe('PatientsService', () => {
         return { items: [], nextCursor: undefined, hasMore: false };
       },
     } as unknown as PatientRepository;
-    const service = new PatientsService(repo, fakeAudit());
+    const service = new PatientsService(repo, fakeAudit(), fakeQueue());
     await service.listPage(context);
     expect(observed[0]?.limit).toBe(20);
   });
@@ -173,6 +206,7 @@ describe('PatientsService', () => {
         findOne: async () => patientDoc({ firstName: 'Edited' }),
       }),
       audit,
+      fakeQueue(),
     );
     const patient = await service.update(context, actor, 'p1', { firstName: 'Edited' });
     expect(patient.firstName).toBe('Edited');
@@ -188,7 +222,11 @@ describe('PatientsService', () => {
   });
 
   it('throws NotFound when updating a patient outside the organization', async () => {
-    const service = new PatientsService(fakeRepo({ findOne: async () => null }), fakeAudit());
+    const service = new PatientsService(
+      fakeRepo({ findOne: async () => null }),
+      fakeAudit(),
+      fakeQueue(),
+    );
     await expect(
       service.update(context, actor, 'missing', { firstName: 'X' }),
     ).rejects.toBeInstanceOf(NotFoundException);
@@ -196,7 +234,8 @@ describe('PatientsService', () => {
 
   it('deletes a patient and writes an audit entry retaining the before-state', async () => {
     const audit = fakeAudit();
-    const service = new PatientsService(fakeRepo({}), audit);
+    const queue = fakeQueue();
+    const service = new PatientsService(fakeRepo({}), audit, queue);
     await service.remove(context, actor, 'p1');
     expect(audit.records).toHaveLength(1);
     const capture = audit.records[0] as {
@@ -213,6 +252,7 @@ describe('PatientsService', () => {
     const service = new PatientsService(
       fakeRepo({ findOneAndDelete: async () => null }),
       fakeAudit(),
+      fakeQueue(),
     );
     await expect(service.remove(context, actor, 'missing')).rejects.toBeInstanceOf(
       NotFoundException,

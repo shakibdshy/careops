@@ -1,7 +1,14 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { Queue } from 'bullmq';
 import type { CursorPage, CreatePatientDto, Patient, UpdatePatientDto } from '@careops/shared';
 import { AuditService } from '../audit/audit.service.js';
 import type { OrgRequestContext } from '../data/org-scoped.repository.js';
+import {
+  PATIENT_CREATED_JOB,
+  patientCreatedJobId,
+  NOTIFICATIONS_QUEUE,
+} from '../notifications/notifications.tokens.js';
+import type { PatientCreatedJob } from '../notifications/notifications.tokens.js';
 import { PatientRepository } from './patient.repository.js';
 import type { PatientDoc } from './patient.schema.js';
 
@@ -31,6 +38,8 @@ export class PatientsService {
   constructor(
     private readonly patientRepository: PatientRepository,
     private readonly auditService: AuditService,
+    @Inject(NOTIFICATIONS_QUEUE)
+    private readonly notificationsQueue: Queue<PatientCreatedJob>,
   ) {}
 
   async create(
@@ -60,6 +69,15 @@ export class PatientsService {
       before: null,
       after: toPatientDto(doc),
     });
+    await this.notificationsQueue.add(
+      PATIENT_CREATED_JOB,
+      {
+        organizationId: context.organizationId,
+        patientId: String(doc._id),
+        patientName: `${doc.firstName} ${doc.lastName}`,
+      },
+      { jobId: patientCreatedJobId(String(doc._id)) },
+    );
     return toPatientDto(doc);
   }
 

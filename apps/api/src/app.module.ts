@@ -6,6 +6,7 @@ import { WorkspaceModule } from './workspace/workspace.module.js';
 import { OrganizationsModule } from './organizations/organizations.module.js';
 import { PatientsModule } from './patients/patients.module.js';
 import { AuditModule } from './audit/audit.module.js';
+import { NotificationsModule } from './notifications/notifications.module.js';
 import { loadConfig } from './config/env.js';
 import { closeAuth } from './auth/auth.instance.js';
 
@@ -15,6 +16,7 @@ import { closeAuth } from './auth/auth.instance.js';
       useFactory: () => ({ uri: loadConfig().mongoUri }),
     }),
     RedisModule,
+    NotificationsModule,
     AuditModule,
     HealthModule,
     WorkspaceModule,

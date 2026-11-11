@@ -15,11 +15,13 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
-    "boot": "(test -f apps/api/.env || cp .env.example apps/api/.env) && docker compose up -d --wait && turbo run dev",
+    "boot": "(test -f apps/api/.env || cp .env.example apps/api/.env) && docker compose up -d --wait && bun run seed && turbo run dev",
     "boot:infra": "docker compose up -d",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "prepare": "husky"
+    "prepare": "husky",
+    "seed": "bun apps/api/src/seed.ts",
+    "test:e2e:ui": "bun --cwd apps/web playwright test"
   },
   "lint-staged": {
     "*.{ts,tsx,js,mjs}": [
@@ -45,5 +47,8 @@
     "turbo": "^2.5.8",
     "typescript": "^6.0.2",
     "typescript-eslint": "^8.72.2"
+  },
+  "dependencies": {
+    "@nestjs/swagger": "^12.1.1"
   }
 }
