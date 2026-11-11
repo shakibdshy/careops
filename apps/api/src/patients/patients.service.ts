@@ -82,19 +82,20 @@ export class PatientsService {
     patientId: string,
     dto: UpdatePatientDto,
   ): Promise<Patient> {
-    const before = await this.patientRepository.findOne(context, { _id: patientId });
+    // Atomic before-snapshot: findOneAndUpdate with returnPreUpdate returns
+    // the pre-update document in the same round-trip that applies the
+    // change, so the audit's recovery record can never miss a concurrent
+    // mutation.
+    const before = await this.patientRepository.findOneAndUpdate(
+      context,
+      { _id: patientId },
+      { ...dto, dateOfBirth: dto.dateOfBirth, updatedAt: new Date() },
+      { returnPreUpdate: true },
+    );
     if (!before) {
       throw new NotFoundException('Patient not found');
     }
-    const doc = await this.patientRepository.findOneAndUpdate(
-      context,
-      { _id: patientId },
-      {
-        ...dto,
-        ...(dto.dateOfBirth !== undefined ? { dateOfBirth: dto.dateOfBirth } : {}),
-        updatedAt: new Date(),
-      },
-    );
+    const doc = await this.patientRepository.findOne(context, { _id: patientId });
     if (!doc) {
       throw new NotFoundException('Patient not found');
     }

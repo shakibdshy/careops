@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import {
   createInvitationSchema,
   organizationCurrentSchema,
@@ -119,13 +119,13 @@ function Workspace() {
         Sign out
       </button>
       <p className="mt-6">
-        <a href="/patients" className="underline" data-testid="nav-patients">
+        <Link to="/patients" className="underline" data-testid="nav-patients">
           Patients
-        </a>{' '}
+        </Link>{' '}
         ·{' '}
-        <a href="/audit" className="underline" data-testid="nav-audit">
+        <Link to="/audit" className="underline" data-testid="nav-audit">
           Audit Entries
-        </a>
+        </Link>
       </p>
       <OrgSection />
     </div>

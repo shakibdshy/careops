@@ -52,18 +52,21 @@ export abstract class OrgScopedRepository<T extends { _id: unknown }> {
       /** Last-seen _id cursor; undefined fetches the first page. */
       afterId?: string | undefined;
       sort?: Record<string, 1 | -1 | { $meta: string }>;
+      /** Walk newest-first ('desc'): the cursor then compares with $lt. */
+      order?: 'asc' | 'desc';
     },
   ): Promise<CursorPage<HydratedDocument<T>>> {
-    const { filter, limit, afterId, sort } = options;
+    const { filter, limit, afterId, sort, order } = options;
+    const descending = order === 'desc';
     const query: QueryFilter<T> = this.orgFilter(context, filter);
     if (afterId) {
       // _id is ObjectId-typed in mongoose's strict query casting; the string
       // form is valid at runtime and cast through the raw filter record.
-      (query as Record<string, unknown>)['_id'] = { $gt: afterId };
+      (query as Record<string, unknown>)['_id'] = descending ? { $lt: afterId } : { $gt: afterId };
     }
     const docs = await this.model
       .find(query)
-      .sort({ _id: 1, ...sort })
+      .sort({ _id: descending ? -1 : 1, ...sort })
       .limit(limit + 1)
       .exec();
     const hasMore = docs.length > limit;
@@ -80,9 +83,14 @@ export abstract class OrgScopedRepository<T extends { _id: unknown }> {
     context: OrgRequestContext,
     filter: QueryFilter<T>,
     update: UpdateQuery<T>,
+    options: { returnPreUpdate?: boolean } = {},
   ): Promise<HydratedDocument<T> | null> {
+    // returnPreUpdate yields the pre-update document atomically — the exact
+    // before-state for audit captures, immune to concurrent mutations.
     return this.model
-      .findOneAndUpdate(this.orgFilter(context, filter), update, { new: true })
+      .findOneAndUpdate(this.orgFilter(context, filter), update, {
+        new: !options.returnPreUpdate,
+      })
       .exec();
   }
 

@@ -23,21 +23,38 @@ export async function apiPost<S extends ZodType>(
   schema: S,
   body: unknown,
 ): Promise<z.output<S>> {
+  return apiSend('POST', path, schema, body);
+}
+
+export async function apiPatch<S extends ZodType>(
+  path: string,
+  schema: S,
+  body: unknown,
+): Promise<z.output<S>> {
+  return apiSend('PATCH', path, schema, body);
+}
+
+async function apiSend<S extends ZodType>(
+  method: 'POST' | 'PATCH',
+  path: string,
+  schema: S,
+  body: unknown,
+): Promise<z.output<S>> {
   const res = await fetch(path, {
-    method: 'POST',
+    method,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
     const json = (await res.json().catch(() => undefined)) as
       { message?: string; errors?: Array<{ field: string; message: string }> } | undefined;
-    throw Object.assign(new Error(json?.message ?? `POST ${path} failed (${res.status})`), {
+    throw Object.assign(new Error(json?.message ?? `${method} ${path} failed (${res.status})`), {
       fieldErrors: json?.errors,
     });
   }
   const parsed = schema.safeParse((await res.json()) as unknown);
   if (!parsed.success) {
-    throw new Error(`POST ${path}: response failed contract validation`);
+    throw new Error(`${method} ${path}: response failed contract validation`);
   }
   return parsed.data;
 }
