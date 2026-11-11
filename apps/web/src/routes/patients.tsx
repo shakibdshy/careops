@@ -1,7 +1,12 @@
 import { useEffect, useState } from 'react';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { patientsPageSchema, workspaceMeSchema, type WorkspaceMe } from '@careops/shared';
+import {
+  patientSchema,
+  patientsPageSchema,
+  workspaceMeSchema,
+  type WorkspaceMe,
+} from '@careops/shared';
 import { apiGet, apiPost, fieldErrorsOf } from '../lib/api';
 
 export const Route = createFileRoute('/patients')({ component: PatientsPage });
@@ -25,6 +30,8 @@ function PatientsPage() {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [dateOfBirth, setDateOfBirth] = useState('');
+  const [phone, setPhone] = useState('');
+  const [notes, setNotes] = useState('');
   const [formError, setFormError] = useState<string | undefined>();
   const [fieldErrors, setFieldErrors] = useState<Array<{ field: string; message: string }>>([]);
 
@@ -38,10 +45,12 @@ function PatientsPage() {
 
   const createMutation = useMutation({
     mutationFn: async () =>
-      apiPost('/api/patients', patientsPageSchema.shape.items.element, {
+      apiPost('/api/patients', patientSchema, {
         firstName,
         lastName,
         dateOfBirth,
+        ...(phone ? { phone } : {}),
+        ...(notes ? { notes } : {}),
       }),
     onSuccess: () => {
       setFirstName('');
@@ -94,6 +103,20 @@ function PatientsPage() {
             onChange={(e) => setDateOfBirth(e.target.value)}
             className="rounded border p-2"
             data-testid="patient-date-of-birth"
+          />
+          <input
+            placeholder="Phone (optional)"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            className="rounded border p-2"
+            data-testid="patient-phone"
+          />
+          <input
+            placeholder="Notes (optional)"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            className="rounded border p-2"
+            data-testid="patient-notes"
           />
           <button
             type="submit"

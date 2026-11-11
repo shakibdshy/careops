@@ -39,7 +39,7 @@ export const auditEntrySchema = z.object({
   organizationId: z.string(),
   actorId: z.string(),
   actorEmail: z.string(),
-  action: z.string(),
+  action: z.enum(['create', 'update', 'delete']),
   entity: z.string(),
   entityId: z.string(),
   before: z.unknown().nullable(),

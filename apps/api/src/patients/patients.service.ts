@@ -43,6 +43,9 @@ export class PatientsService {
       dateOfBirth: dto.dateOfBirth,
       createdAt: new Date(),
       updatedAt: new Date(),
+      // The repository insert payload is the persisted shape; extra document
+      // plumbing (set/save/schema handles on the hydrated type) is not part
+      // of it.
     };
     const doc = await this.patientRepository.create(
       context,

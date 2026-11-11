@@ -40,5 +40,18 @@ jobs:
       - name: Test
         run: bun run test
 
+      - name: Coverage summary
+        if: always()
+        run: |
+          SUMMARY=apps/api/coverage/coverage-summary.json
+          if [ -f "$SUMMARY" ]; then
+            LINES=$(jq -r '.total.lines.pct' "$SUMMARY")
+            BRANCHES=$(jq -r '.total.branches.pct' "$SUMMARY")
+            echo "### API coverage" >> "$GITHUB_STEP_SUMMARY"
+            echo "| lines | branches |" >> "$GITHUB_STEP_SUMMARY"
+            echo "| --- | --- |" >> "$GITHUB_STEP_SUMMARY"
+            echo "| ${LINES}% | ${BRANCHES}% |" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Build
         run: bun run build
