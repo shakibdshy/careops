@@ -60,6 +60,10 @@ function Home() {
         <a href="/workspace" className="underline">
           Workspace
         </a>
+        {' · '}
+        <a href="/patients" className="underline">
+          Patients
+        </a>
       </p>
     </div>
   );

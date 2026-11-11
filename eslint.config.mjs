@@ -49,4 +49,11 @@ export default tseslint.config(
     plugins: { 'react-hooks': reactHooks },
     rules: reactHooks.configs.recommended.rules,
   },
+  {
+    // Test fakes legitimately declare async methods without awaiting.
+    files: ['**/*.spec.ts', '**/*.e2e-spec.ts'],
+    rules: {
+      '@typescript-eslint/require-await': 'off',
+    },
+  },
 );

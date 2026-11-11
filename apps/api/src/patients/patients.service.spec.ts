@@ -1,0 +1,162 @@
+import { NotFoundException } from '@nestjs/common';
+import type { CursorPage } from '@careops/shared';
+import { PatientsService } from './patients.service.js';
+import type { PatientRepository } from './patient.repository.js';
+import { AuditService } from '../audit/audit.service.js';
+import type { PatientDoc } from './patient.schema.js';
+
+const context = { organizationId: 'org-1' };
+const actor = { id: 'user-1', email: 'owner@example.test' };
+
+function patientDoc(overrides: Partial<Record<string, unknown>> = {}): PatientDoc {
+  return {
+    _id: 'p1',
+    organizationId: 'org-1',
+    firstName: 'Ada',
+    lastName: 'Lovelace',
+    dateOfBirth: new Date('1990-12-10'),
+    phone: '555-0100',
+    notes: 'first patient',
+    createdAt: new Date('2026-01-01T00:00:00Z'),
+    updatedAt: new Date('2026-01-01T00:00:00Z'),
+    ...overrides,
+  } as unknown as PatientDoc;
+}
+
+function fakeRepo(
+  overrides: Partial<{
+    create: () => Promise<PatientDoc>;
+    findOne: () => Promise<PatientDoc | null>;
+    findPage: () => Promise<CursorPage<PatientDoc>>;
+  }>,
+): PatientRepository {
+  const base = {
+    create: async () => patientDoc(),
+    findOne: async () => patientDoc(),
+    findPage: async () => ({ items: [patientDoc()], nextCursor: undefined, hasMore: false }),
+  };
+  const merged = { ...base, ...overrides };
+  return merged as unknown as PatientRepository;
+}
+
+function fakeAudit(): AuditService & { records: unknown[] } {
+  const records: unknown[] = [];
+  const service = Object.create(AuditService.prototype) as AuditService & { records: unknown[] };
+  service.record = async (capture: unknown) => {
+    records.push(capture);
+  };
+  service.records = records;
+  return service;
+}
+
+describe('PatientsService', () => {
+  it('creates a patient and writes an audit entry with before=null', async () => {
+    const audit = fakeAudit();
+    const service = new PatientsService(fakeRepo({}), audit);
+    const patient = await service.create(context, actor, {
+      firstName: 'Ada',
+      lastName: 'Lovelace',
+      dateOfBirth: new Date('1990-12-10'),
+      phone: '555-0100',
+      notes: 'first patient',
+    });
+    expect(patient.id).toBe('p1');
+    expect(patient.organizationId).toBe('org-1');
+    expect(patient.dateOfBirth).toBe('1990-12-10T00:00:00.000Z');
+    expect(audit.records).toHaveLength(1);
+    const capture = audit.records[0] as {
+      action: string;
+      entity: string;
+      before: unknown;
+      after: { firstName: string };
+    };
+    expect(capture.action).toBe('create');
+    expect(capture.entity).toBe('patient');
+    expect(capture.before).toBeNull();
+    expect(capture.after.firstName).toBe('Ada');
+  });
+
+  it('returns a patient found within the organization', async () => {
+    const service = new PatientsService(fakeRepo({}), fakeAudit());
+    const patient = await service.findOne(context, 'p1');
+    expect(patient.id).toBe('p1');
+  });
+
+  it('throws NotFound for a patient outside the organization', async () => {
+    const service = new PatientsService(fakeRepo({ findOne: async () => null }), fakeAudit());
+    await expect(service.findOne(context, 'missing')).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('maps a repository page into the cursor envelope', async () => {
+    const service = new PatientsService(
+      fakeRepo({
+        findPage: async () => ({ items: [patientDoc()], nextCursor: 'p1', hasMore: true }),
+      }),
+      fakeAudit(),
+    );
+    const page = await service.listPage(context, undefined, 20);
+    expect(page.items).toHaveLength(1);
+    expect(page.nextCursor).toBe('p1');
+    expect(page.hasMore).toBe(true);
+  });
+
+  it('returns nextCursor undefined on the last page', async () => {
+    const service = new PatientsService(fakeRepo({}), fakeAudit());
+    const page = await service.listPage(context, undefined, 20);
+    expect(page.nextCursor).toBeUndefined();
+    expect(page.hasMore).toBe(false);
+  });
+
+  it('maps optional fields as undefined when absent', async () => {
+    const service = new PatientsService(
+      fakeRepo({
+        create: async () => patientDoc({ phone: undefined, notes: undefined }),
+      }),
+      fakeAudit(),
+    );
+    const patient = await service.create(context, actor, {
+      firstName: 'Ada',
+      lastName: 'Lovelace',
+      dateOfBirth: new Date('1990-12-10'),
+    });
+    expect(patient.phone).toBeUndefined();
+    expect(patient.notes).toBeUndefined();
+  });
+
+  it('uses the provided cursor and limit for pagination', async () => {
+    const observed: Array<{ limit: number; afterId: string | undefined }> = [];
+    const repo = {
+      findPage: async (_context: unknown, options: { limit: number; afterId?: string }) => {
+        observed.push({ limit: options.limit, afterId: options.afterId });
+        return { items: [], nextCursor: undefined, hasMore: false };
+      },
+    } as unknown as PatientRepository;
+    const service = new PatientsService(repo, fakeAudit());
+    await service.listPage(context, 'cursor-42', 5);
+    expect(observed[0]).toEqual({ limit: 5, afterId: 'cursor-42' });
+  });
+
+  it('reports an empty last page without a cursor', async () => {
+    const service = new PatientsService(
+      fakeRepo({ findPage: async () => ({ items: [], nextCursor: undefined, hasMore: false }) }),
+      fakeAudit(),
+    );
+    const page = await service.listPage(context, 'end-cursor', 20);
+    expect(page.items).toEqual([]);
+    expect(page.nextCursor).toBeUndefined();
+    expect(page.hasMore).toBe(false);
+  });
+
+  it('defaults the page size when none is provided', async () => {
+    const observed: Array<{ limit: number; afterId: string | undefined }> = [];
+    const repo = {
+      findPage: async (_context: unknown, options: { limit: number; afterId?: string }) => {
+        observed.push({ limit: options.limit, afterId: options.afterId });
+        return { items: [], nextCursor: undefined, hasMore: false };
+      },
+    } as unknown as PatientRepository;
+    const service = new PatientsService(repo, fakeAudit());
+    await service.listPage(context);
+    expect(observed[0]?.limit).toBe(20);
+  });
+});

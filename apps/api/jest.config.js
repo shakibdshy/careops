@@ -19,4 +19,14 @@ export default {
   },
   transformIgnorePatterns: ['/node_modules/(?!.*@nestjs)'],
   testMatch: ['**/*.spec.ts'],
+  collectCoverage: true,
+  coverageDirectory: 'coverage',
+  collectCoverageFrom: ['src/**/*.ts', '!src/main.ts', '!src/bootstrap-api.ts'],
+  // 80% gate on domain services (spec week-1). Controllers are exercised by
+  // the e2e seam (not counted here); the global gate widens in T7.
+  coverageThreshold: {
+    './src/patients/patients.service.ts': { lines: 80, branches: 80 },
+    './src/audit/audit.service.ts': { lines: 80, branches: 80 },
+    './src/config/env.ts': { lines: 80, branches: 80 },
+  },
 };

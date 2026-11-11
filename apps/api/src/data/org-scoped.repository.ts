@@ -50,7 +50,7 @@ export abstract class OrgScopedRepository<T extends { _id: unknown }> {
       filter?: QueryFilter<T>;
       limit: number;
       /** Last-seen _id cursor; undefined fetches the first page. */
-      afterId?: string;
+      afterId?: string | undefined;
       sort?: Record<string, 1 | -1 | { $meta: string }>;
     },
   ): Promise<CursorPage<HydratedDocument<T>>> {
