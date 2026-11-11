@@ -34,5 +34,6 @@ export class AuditEntryDocument {
 export type AuditEntryDoc = HydratedDocument<AuditEntryDocument>;
 export const AuditEntryModelSchema = SchemaFactory.createForClass(AuditEntryDocument);
 
-// Audit browsing lists by recency inside an organization (ADR-0006 index rule).
-AuditEntryModelSchema.index({ organizationId: 1, at: -1, _id: 1 });
+// Audit browsing (query shape, ADR-0006): newest-first _id cursor scan per
+// ADR-0008 — { organizationId, _id desc } is the serving index.
+AuditEntryModelSchema.index({ organizationId: 1, _id: -1 });

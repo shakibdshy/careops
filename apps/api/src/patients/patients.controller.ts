@@ -15,7 +15,7 @@ import type { CursorPage, CreatePatientDto, Patient, UpdatePatientDto } from '@c
 import { createPatientSchema, updatePatientSchema } from '@careops/shared';
 import { getOrgContext, getSession, OrgContextGuard, Roles } from '../auth/org-context.js';
 import { ZodValidationPipe } from '../common/zod-validation.pipe.js';
-import { patientsListQuerySchema, type PatientsListQuery } from './patients.query.js';
+import { cursorPageQuerySchema, type CursorPageQuery } from '../common/cursor-query.js';
 import { PatientsService } from './patients.service.js';
 
 /**
@@ -47,7 +47,7 @@ export class PatientsController {
   @Get()
   async list(
     @Req() request: Request,
-    @Query(new ZodValidationPipe(patientsListQuerySchema)) query: PatientsListQuery,
+    @Query(new ZodValidationPipe(cursorPageQuerySchema)) query: CursorPageQuery,
   ): Promise<CursorPage<Patient>> {
     const context = getOrgContext(request);
     return this.patientsService.listPage(context, query.cursor, query.limit);

@@ -15,6 +15,23 @@ interface AuditCapture {
   after: Record<string, unknown> | null;
 }
 
+/** The single Audit Entry → shared-contract mapper (used by write and read paths). */
+export function auditEntryToDto(doc: AuditEntryDoc): AuditEntry {
+  return {
+    id: String(doc._id),
+    organizationId: doc.organizationId,
+    actorId: doc.actorId,
+    actorEmail: doc.actorEmail,
+    // The stored string is validated against the shared action vocabulary.
+    action: auditEntrySchema.shape.action.parse(doc.action),
+    entity: doc.entity,
+    entityId: doc.entityId,
+    before: doc.before,
+    after: doc.after,
+    at: doc.at.toISOString(),
+  };
+}
+
 /**
  * Append-only audit capture (glossary: Audit Entry). Called explicitly by
  * domain services around each mutation so before/after diffs are reliable.
@@ -42,19 +59,6 @@ export class AuditService {
   }
 
   toDto(doc: AuditEntryDoc): AuditEntry {
-    return {
-      id: String(doc._id),
-      organizationId: doc.organizationId,
-      actorId: doc.actorId,
-      actorEmail: doc.actorEmail,
-      // AuditService.record only writes the three known actions; the stored
-      // string is validated against the shared vocabulary here.
-      action: auditEntrySchema.shape.action.parse(doc.action),
-      entity: doc.entity,
-      entityId: doc.entityId,
-      before: doc.before,
-      after: doc.after,
-      at: doc.at.toISOString(),
-    };
+    return auditEntryToDto(doc);
   }
 }

@@ -33,7 +33,9 @@ export type CreatePatientDto = z.infer<typeof createPatientSchema>;
 export const patientsPageSchema = cursorPage(patientSchema);
 export type PatientsPage = z.infer<typeof patientsPageSchema>;
 
-export const updatePatientSchema = createPatientSchema.partial();
+export const updatePatientSchema = createPatientSchema
+  .partial()
+  .refine((dto) => Object.keys(dto).length > 0, 'must change at least one field');
 export type UpdatePatientDto = z.infer<typeof updatePatientSchema>;
 
 /** An immutable who/what/when/before→after record of a mutation. */

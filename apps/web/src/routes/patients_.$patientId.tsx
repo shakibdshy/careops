@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { patientSchema, workspaceMeSchema, type Patient, type WorkspaceMe } from '@careops/shared';
-import { apiDelete, apiGet, apiPost, fieldErrorsOf } from '../lib/api';
+import { apiDelete, apiGet, apiPatch, fieldErrorsOf } from '../lib/api';
 
 export const Route = createFileRoute('/patients_/$patientId')({
   component: PatientDetailPage,
@@ -51,7 +51,7 @@ function PatientDetailPage() {
     setFormError(undefined);
     setFieldErrors([]);
     try {
-      const updated = await apiPost(`/api/patients/${patientId}`, patientSchema, {
+      const updated = await apiPatch(`/api/patients/${patientId}`, patientSchema, {
         firstName,
         lastName,
         dateOfBirth,

@@ -166,7 +166,14 @@ describe('PatientsService', () => {
 
   it('updates a patient and writes an audit entry with before→after', async () => {
     const audit = fakeAudit();
-    const service = new PatientsService(fakeRepo({}), audit);
+    const service = new PatientsService(
+      fakeRepo({
+        // returnPreUpdate semantics: findOneAndUpdate yields the PRE doc.
+        findOneAndUpdate: async () => patientDoc(),
+        findOne: async () => patientDoc({ firstName: 'Edited' }),
+      }),
+      audit,
+    );
     const patient = await service.update(context, actor, 'p1', { firstName: 'Edited' });
     expect(patient.firstName).toBe('Edited');
     expect(audit.records).toHaveLength(1);

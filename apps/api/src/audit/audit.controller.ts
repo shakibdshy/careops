@@ -4,7 +4,7 @@ import type { AuditEntriesPage } from '@careops/shared';
 import { getOrgContext, OrgContextGuard, Roles } from '../auth/org-context.js';
 import { ZodValidationPipe } from '../common/zod-validation.pipe.js';
 import { AuditEntryReader } from './audit-entry.model.js';
-import { patientsListQuerySchema, type PatientsListQuery } from '../patients/patients.query.js';
+import { cursorPageQuerySchema, type CursorPageQuery } from '../common/cursor-query.js';
 
 /**
  * Audit Entry browsing (glossary: append-only, owner/admin visibility).
@@ -19,7 +19,7 @@ export class AuditController {
   @Roles('admin', 'owner')
   async list(
     @Req() request: Request,
-    @Query(new ZodValidationPipe(patientsListQuerySchema)) query: PatientsListQuery,
+    @Query(new ZodValidationPipe(cursorPageQuerySchema)) query: CursorPageQuery,
   ): Promise<AuditEntriesPage> {
     const context = getOrgContext(request);
     return this.auditReader.listPage(context, query.cursor, query.limit);

@@ -57,23 +57,28 @@ test.describe.serial('browser happy paths', () => {
     return patient!.id;
   }
 
-  test('edits the patient and sees the change', async ({ browser }) => {
+  test('edits the patient and the server persists the change', async ({ browser }) => {
     const page = await authedPage(browser);
     const patientId = await createdPatientId(page);
-    console.log('EDIT: patientId', patientId);
     await page.goto(`/patients/${patientId}`);
     await page.waitForLoadState('networkidle');
-    console.log('EDIT: url after goto', page.url());
     await page.getByTestId('edit-first-name').fill('Percival');
     await page.getByTestId('save-patient').click();
     await expect(page.getByTestId('edit-first-name')).toHaveValue('Percival');
+    // Server truth: a fresh page shows the persisted name, not local state.
+    const verify = await authedPage(browser);
+    await gotoHydrated(verify, `/patients/${patientId}`);
+    await expect(verify.getByTestId('edit-first-name')).toHaveValue('Percival');
   });
 
   test('an owner sees the audit trail with the mutation', async ({ browser }) => {
     const page = await authedPage(browser);
     await gotoHydrated(page, '/audit');
     await expect(page.getByTestId('audit-list')).toContainText(`Fawkes-${RUN_ID}`);
-    await expect(page.getByTestId('audit-row').first()).toContainText('create');
+    // The edit above produced an update entry with before→after.
+    await expect(page.getByTestId('audit-row').filter({ hasText: 'update' }).first()).toContainText(
+      'Fawkes',
+    );
   });
 
   test('deletes the patient and the list no longer shows it', async ({ browser }) => {
