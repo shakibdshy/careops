@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import type { CursorPage, CreatePatientDto, Patient } from '@careops/shared';
+import type { CursorPage, CreatePatientDto, Patient, UpdatePatientDto } from '@careops/shared';
 import { AuditService } from '../audit/audit.service.js';
 import type { OrgRequestContext } from '../data/org-scoped.repository.js';
 import { PatientRepository } from './patient.repository.js';
@@ -74,6 +74,60 @@ export class PatientsService {
       throw new NotFoundException('Patient not found');
     }
     return toPatientDto(doc);
+  }
+
+  async update(
+    context: OrgRequestContext,
+    actor: PatientActor,
+    patientId: string,
+    dto: UpdatePatientDto,
+  ): Promise<Patient> {
+    const before = await this.patientRepository.findOne(context, { _id: patientId });
+    if (!before) {
+      throw new NotFoundException('Patient not found');
+    }
+    const doc = await this.patientRepository.findOneAndUpdate(
+      context,
+      { _id: patientId },
+      {
+        ...dto,
+        ...(dto.dateOfBirth !== undefined ? { dateOfBirth: dto.dateOfBirth } : {}),
+        updatedAt: new Date(),
+      },
+    );
+    if (!doc) {
+      throw new NotFoundException('Patient not found');
+    }
+    await this.auditService.record({
+      context,
+      actor,
+      action: 'update',
+      entity: 'patient',
+      entityId: patientId,
+      before: toPatientDto(before),
+      after: toPatientDto(doc),
+    });
+    return toPatientDto(doc);
+  }
+
+  /**
+   * Hard delete per the Week-1 spec; the audit entry retains the complete
+   * before-state as the recovery record.
+   */
+  async remove(context: OrgRequestContext, actor: PatientActor, patientId: string): Promise<void> {
+    const before = await this.patientRepository.findOneAndDelete(context, { _id: patientId });
+    if (!before) {
+      throw new NotFoundException('Patient not found');
+    }
+    await this.auditService.record({
+      context,
+      actor,
+      action: 'delete',
+      entity: 'patient',
+      entityId: patientId,
+      before: toPatientDto(before),
+      after: null,
+    });
   }
 
   async listPage(

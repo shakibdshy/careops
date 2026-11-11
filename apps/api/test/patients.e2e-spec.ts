@@ -7,6 +7,7 @@ import type { INestApplication } from '@nestjs/common';
 import type { TestingModule } from '@nestjs/testing';
 import type { App } from 'supertest/types.js';
 import {
+  auditEntriesPageSchema,
   createPatientSchema,
   errorResponseSchema,
   patientsPageSchema,
@@ -193,6 +194,100 @@ describe('Patients (e2e)', () => {
       const res = await ownerAgent.get(`/api/patients/${strangerPatientId}`);
       expect(res.status).toBe(404);
       errorResponseSchema.parse(res.body);
+    });
+
+    it('cross-organization update is a 404', async () => {
+      const res = await ownerAgent
+        .patch(`/api/patients/${strangerPatientId}`)
+        .send({ firstName: 'Hijacked' });
+      expect(res.status).toBe(404);
+      errorResponseSchema.parse(res.body);
+    });
+
+    it('cross-organization delete is a 404 and leaves the patient intact', async () => {
+      const res = await ownerAgent.delete(`/api/patients/${strangerPatientId}`);
+      expect(res.status).toBe(404);
+      const stillThere = await strangerAgent.get(`/api/patients/${strangerPatientId}`).expect(200);
+      expect(patientSchema.parse(stillThere.body).firstName).toBe('Ada');
+    });
+  });
+
+  describe('update + delete (admin/owner)', () => {
+    let patientId: string;
+
+    beforeAll(async () => {
+      const res = await ownerAgent
+        .post('/api/patients')
+        .send({ ...validPatient, firstName: 'Edit', lastName: 'Me' })
+        .expect(201);
+      patientId = (res.body as { id: string }).id;
+    });
+
+    it('an owner updates a patient; response matches the contract', async () => {
+      const res = await ownerAgent
+        .patch(`/api/patients/${patientId}`)
+        .send({ firstName: 'Edited', phone: '555-9999' })
+        .expect(200);
+      const patient = patientSchema.parse(res.body);
+      expect(patient.firstName).toBe('Edited');
+      expect(patient.lastName).toBe('Me');
+      expect(patient.phone).toBe('555-9999');
+    });
+
+    it('a member cannot update (403)', async () => {
+      await memberAgent.patch(`/api/patients/${patientId}`).send({ firstName: 'Nope' }).expect(403);
+    });
+
+    it('a member cannot delete (403)', async () => {
+      await memberAgent.delete(`/api/patients/${patientId}`).expect(403);
+    });
+
+    it('an owner deletes a patient; the record disappears', async () => {
+      await ownerAgent.delete(`/api/patients/${patientId}`).expect(200);
+      await ownerAgent.get(`/api/patients/${patientId}`).expect(404);
+    });
+
+    it('deleting a missing patient is a 404', async () => {
+      const res = await ownerAgent.delete(`/api/patients/${patientId}`);
+      expect(res.status).toBe(404);
+      errorResponseSchema.parse(res.body);
+    });
+  });
+
+  describe('audit browsing (owner/admin)', () => {
+    it('an owner sees the audit trail newest-first with before→after', async () => {
+      const res = await ownerAgent.get('/api/audit-entries?limit=100').expect(200);
+      const page = auditEntriesPageSchema.parse(res.body);
+      expect(page.items.length).toBeGreaterThanOrEqual(4);
+      // One of the deleted patient's entries: full before-state, null after.
+      const deleted = page.items.find((entry) => entry.action === 'delete' && entry.after === null);
+      expect(deleted).toBeDefined();
+      expect(deleted?.before).toMatchObject({ firstName: 'Edited' });
+      // An update entry carries both states.
+      const updated = page.items.find((entry) => entry.action === 'update');
+      expect(updated?.before).toMatchObject({ firstName: 'Edit' });
+      expect(updated?.after).toMatchObject({ firstName: 'Edited' });
+    });
+
+    it('a member cannot browse the audit trail (403)', async () => {
+      const res = await memberAgent.get('/api/audit-entries');
+      expect(res.status).toBe(403);
+      errorResponseSchema.parse(res.body);
+    });
+
+    it('audit entries are cursor-paginated', async () => {
+      const first = auditEntriesPageSchema.parse(
+        (await ownerAgent.get('/api/audit-entries?limit=2').expect(200)).body,
+      );
+      expect(first.items.length).toBe(2);
+      expect(first.hasMore).toBe(true);
+      const second = auditEntriesPageSchema.parse(
+        (await ownerAgent.get(`/api/audit-entries?limit=2&cursor=${first.nextCursor}`).expect(200))
+          .body,
+      );
+      const firstIds = first.items.map((entry) => entry.id);
+      const secondIds = second.items.map((entry) => entry.id);
+      expect(firstIds.some((id) => secondIds.includes(id))).toBe(false);
     });
   });
 
