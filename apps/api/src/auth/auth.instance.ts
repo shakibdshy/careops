@@ -1,6 +1,7 @@
 import { MongoClient } from 'mongodb';
 import { betterAuth } from 'better-auth';
 import { mongodbAdapter } from 'better-auth/adapters/mongodb';
+import { organization } from 'better-auth/plugins';
 import { loadConfig } from '../config/env.js';
 
 let instance: ReturnType<typeof createAuth> | undefined;
@@ -33,6 +34,29 @@ function createAuth() {
     database: mongodbAdapter(db),
     emailAndPassword: {
       enabled: true,
+    },
+    // Tenant boundary per the glossary: every User lands in exactly one
+    // Organization as its owner (ADR-0006 discriminator-key tenancy builds on
+    // this invariant in T5). Invitations and roles come from the plugin.
+    plugins: [organization()],
+    databaseHooks: {
+      user: {
+        create: {
+          after: async (user: { id: string; name: string }) => {
+            // System action: no session exists yet, so no request headers may
+            // be passed (better-auth rejects header-bearing calls without a
+            // session). userId marks this as a server-side action. Active-
+            // organization resolution happens at read time in OrgContextGuard.
+            await getAuth().api.createOrganization({
+              body: {
+                name: `${user.name}'s Organization`,
+                slug: `org-${user.id}`,
+                userId: user.id,
+              },
+            });
+          },
+        },
+      },
     },
     trustedOrigins: config.nodeEnv === 'production' ? [] : ['http://localhost:3000'],
   });

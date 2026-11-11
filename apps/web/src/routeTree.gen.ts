@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as WorkspaceRouteImport } from './routes/workspace'
+import { Route as InviteInvitationIdRouteImport } from './routes/invite.$invitationId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -34,18 +35,25 @@ const WorkspaceRoute = WorkspaceRouteImport.update({
   path: '/workspace',
   getParentRoute: () => rootRouteImport,
 } as any)
+const InviteInvitationIdRoute = InviteInvitationIdRouteImport.update({
+  id: '/invite/$invitationId',
+  path: '/invite/$invitationId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/workspace': typeof WorkspaceRoute
+  '/invite/$invitationId': typeof InviteInvitationIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/workspace': typeof WorkspaceRoute
+  '/invite/$invitationId': typeof InviteInvitationIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -53,13 +61,20 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/workspace': typeof WorkspaceRoute
+  '/invite/$invitationId': typeof InviteInvitationIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/signup' | '/workspace'
+  fullPaths: '/' | '/login' | '/signup' | '/workspace' | '/invite/$invitationId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login' | '/signup' | '/workspace'
-  id: '__root__' | '/' | '/login' | '/signup' | '/workspace'
+  to: '/' | '/login' | '/signup' | '/workspace' | '/invite/$invitationId'
+  id:
+    | '__root__'
+    | '/'
+    | '/login'
+    | '/signup'
+    | '/workspace'
+    | '/invite/$invitationId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -67,6 +82,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   SignupRoute: typeof SignupRoute
   WorkspaceRoute: typeof WorkspaceRoute
+  InviteInvitationIdRoute: typeof InviteInvitationIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -99,6 +115,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WorkspaceRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/invite/$invitationId': {
+      id: '/invite/$invitationId'
+      path: '/invite/$invitationId'
+      fullPath: '/invite/$invitationId'
+      preLoaderRoute: typeof InviteInvitationIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -107,6 +130,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   SignupRoute: SignupRoute,
   WorkspaceRoute: WorkspaceRoute,
+  InviteInvitationIdRoute: InviteInvitationIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
