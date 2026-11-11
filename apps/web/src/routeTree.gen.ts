@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as PatientsRouteImport } from './routes/patients'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as WorkspaceRouteImport } from './routes/workspace'
 import { Route as InviteInvitationIdRouteImport } from './routes/invite.$invitationId'
@@ -23,6 +24,11 @@ const IndexRoute = IndexRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PatientsRoute = PatientsRouteImport.update({
+  id: '/patients',
+  path: '/patients',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SignupRoute = SignupRouteImport.update({
@@ -44,6 +50,7 @@ const InviteInvitationIdRoute = InviteInvitationIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/patients': typeof PatientsRoute
   '/signup': typeof SignupRoute
   '/workspace': typeof WorkspaceRoute
   '/invite/$invitationId': typeof InviteInvitationIdRoute
@@ -51,6 +58,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/patients': typeof PatientsRoute
   '/signup': typeof SignupRoute
   '/workspace': typeof WorkspaceRoute
   '/invite/$invitationId': typeof InviteInvitationIdRoute
@@ -59,19 +67,33 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/patients': typeof PatientsRoute
   '/signup': typeof SignupRoute
   '/workspace': typeof WorkspaceRoute
   '/invite/$invitationId': typeof InviteInvitationIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/signup' | '/workspace' | '/invite/$invitationId'
+  fullPaths:
+    | '/'
+    | '/login'
+    | '/patients'
+    | '/signup'
+    | '/workspace'
+    | '/invite/$invitationId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login' | '/signup' | '/workspace' | '/invite/$invitationId'
+  to:
+    | '/'
+    | '/login'
+    | '/patients'
+    | '/signup'
+    | '/workspace'
+    | '/invite/$invitationId'
   id:
     | '__root__'
     | '/'
     | '/login'
+    | '/patients'
     | '/signup'
     | '/workspace'
     | '/invite/$invitationId'
@@ -80,6 +102,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   LoginRoute: typeof LoginRoute
+  PatientsRoute: typeof PatientsRoute
   SignupRoute: typeof SignupRoute
   WorkspaceRoute: typeof WorkspaceRoute
   InviteInvitationIdRoute: typeof InviteInvitationIdRoute
@@ -99,6 +122,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/patients': {
+      id: '/patients'
+      path: '/patients'
+      fullPath: '/patients'
+      preLoaderRoute: typeof PatientsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/signup': {
@@ -128,6 +158,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   LoginRoute: LoginRoute,
+  PatientsRoute: PatientsRoute,
   SignupRoute: SignupRoute,
   WorkspaceRoute: WorkspaceRoute,
   InviteInvitationIdRoute: InviteInvitationIdRoute,

@@ -31,12 +31,10 @@ export class EnvValidationError extends Error {
 export function validateEnv(raw: Record<string, string | undefined>): AppConfig {
   const result = envSchema.safeParse(raw);
   if (!result.success) {
-    const first = result.error.issues[0];
-    if (!first) {
-      throw new EnvValidationError('unknown', 'validation produced no details');
-    }
-    const envName = first.path.join('.') || 'unknown';
-    throw new EnvValidationError(envName, first.message);
+    // A failed safeParse always carries at least one issue; object-schema
+    // issue paths are never empty, so the variable name is always present.
+    const first = result.error.issues[0]!;
+    throw new EnvValidationError(first.path.join('.'), first.message);
   }
   return {
     port: result.data.PORT,

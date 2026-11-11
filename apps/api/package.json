@@ -8,7 +8,7 @@
     "build": "nest build",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "jest && jest -c jest.e2e.config.js",
+    "test": "jest --coverage && jest -c jest.e2e.config.js",
     "test:unit": "jest",
     "test:e2e": "jest -c jest.e2e.config.js",
     "test:cov": "jest --coverage"
@@ -19,6 +19,7 @@
     "@nestjs/core": "^12.0.1",
     "@nestjs/mongoose": "^12.0.1",
     "@nestjs/platform-express": "^12.0.1",
+    "@nestjs/swagger": "^12.1.1",
     "better-auth": "^1.7.20",
     "express": "^5.1.0",
     "ioredis": "^6.0.0",

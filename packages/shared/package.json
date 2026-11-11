@@ -4,16 +4,20 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
   },
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
-  "dependencies": {
-    "zod": "^4.1.12"
-  },
   "devDependencies": {
     "typescript": "^6.0.2"
+  },
+  "dependencies": {
+    "zod": "^4.1.12"
   }
 }

@@ -46,4 +46,66 @@ describe('validateEnv', () => {
   it('fails fast naming the invalid variable', () => {
     expect(() => validateEnv({ ...validEnv, PORT: 'not-a-port' })).toThrow(/PORT/);
   });
+
+  it('rejects an auth secret shorter than 32 characters', () => {
+    expect(() => validateEnv({ ...validEnv, BETTER_AUTH_SECRET: 'too-short' })).toThrow(
+      /BETTER_AUTH_SECRET/,
+    );
+  });
+});
+
+describe('loadConfig', () => {
+  const envKeys = ['PORT', 'MONGODB_URI', 'REDIS_URL', 'BETTER_AUTH_SECRET', 'NODE_ENV'] as const;
+
+  afterEach(() => {
+    jest.resetModules();
+  });
+
+  it('validates process.env once and caches the config', async () => {
+    const saved: Record<string, string | undefined> = {};
+    for (const key of envKeys) {
+      saved[key] = process.env[key];
+    }
+    process.env.MONGODB_URI = 'mongodb://localhost:27017/cached';
+    process.env.REDIS_URL = 'redis://localhost:6379';
+    process.env.BETTER_AUTH_SECRET = 'x'.repeat(32);
+    process.env.PORT = '3123';
+    try {
+      const { loadConfig } = await import('./env.js');
+      const first = loadConfig();
+      const second = loadConfig();
+      expect(second).toBe(first);
+      expect(first.port).toBe(3123);
+    } finally {
+      for (const key of envKeys) {
+        if (saved[key] === undefined) {
+          delete process.env[key];
+        } else {
+          process.env[key] = saved[key];
+        }
+      }
+    }
+  });
+
+  it('fails at boot naming the missing variable', async () => {
+    const saved: Record<string, string | undefined> = {};
+    for (const key of envKeys) {
+      saved[key] = process.env[key];
+      delete process.env[key];
+    }
+    process.env.REDIS_URL = 'redis://localhost:6379';
+    process.env.BETTER_AUTH_SECRET = 'x'.repeat(32);
+    try {
+      const { loadConfig } = await import('./env.js');
+      expect(() => loadConfig()).toThrow(/MONGODB_URI/);
+    } finally {
+      for (const key of envKeys) {
+        if (saved[key] === undefined) {
+          delete process.env[key];
+        } else {
+          process.env[key] = saved[key];
+        }
+      }
+    }
+  });
 });

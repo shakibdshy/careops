@@ -5,8 +5,11 @@
       "dependsOn": ["^build"],
       "outputs": ["dist/**", "build/**", ".output/**"]
     },
+    // Every lane builds dependency packages first: @careops/shared resolves
+    // through its compiled dist (Node ESM cannot load .js specifiers inside
+    // source-exported .ts), so lint/typecheck/test need dist to exist.
     "lint": {
-      "dependsOn": ["^lint"]
+      "dependsOn": ["^build", "^lint"]
     },
     // No package defines a `transit` script — per Turborepo's transit-node
     // pattern this gives `typecheck` correct cache invalidation for changes
@@ -15,10 +18,13 @@
       "dependsOn": ["^transit"]
     },
     "typecheck": {
-      "dependsOn": ["transit"]
+      "dependsOn": ["^build", "transit"]
     },
-    "test": {},
+    "test": {
+      "dependsOn": ["^build"]
+    },
     "dev": {
+      "dependsOn": ["^build"],
       "cache": false,
       "persistent": true
     }
