@@ -7,3 +7,5 @@ export const healthResponseSchema = z.object({
   redis: z.enum(['up', 'down']),
 });
 export type HealthResponse = z.infer<typeof healthResponseSchema>;
+
+export * from './errors.js';
