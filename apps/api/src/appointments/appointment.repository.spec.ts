@@ -26,6 +26,27 @@ function fakeAppointmentModel(result: AppointmentDoc | null = null) {
   return { model: model as unknown as Model<AppointmentDoc>, seen };
 }
 
+function fakeUpdateModel(result: AppointmentDoc | null = null) {
+  const seen: Array<{
+    filter: Record<string, unknown>;
+    update: Record<string, unknown>;
+    options: Record<string, unknown>;
+  }> = [];
+  const model = {
+    findOneAndUpdate: (
+      filter: Record<string, unknown>,
+      update: Record<string, unknown>,
+      options: Record<string, unknown>,
+    ) => ({
+      exec: async () => {
+        seen.push({ filter, update, options });
+        return result;
+      },
+    }),
+  };
+  return { model: model as unknown as Model<AppointmentDoc>, seen };
+}
+
 function fakeScheduleModel() {
   const seen: Array<{
     filter: Record<string, unknown>;
@@ -85,6 +106,24 @@ describe('AppointmentRepository', () => {
       await repository.findConflicting(context, window, session);
 
       expect(seen[0]?.session).toBe(session);
+    });
+
+    it('excludes the appointment being rescheduled from the Conflict scan', async () => {
+      const { model, seen } = fakeAppointmentModel();
+      const repository = new AppointmentRepository(model, fakeScheduleModel().model);
+
+      await repository.findConflicting(context, { ...window, excludeId: 'a1' }, session);
+
+      expect(seen[0]?.filter['_id']).toEqual({ $ne: 'a1' });
+    });
+
+    it('does not constrain _id for a plain booking scan', async () => {
+      const { model, seen } = fakeAppointmentModel();
+      const repository = new AppointmentRepository(model, fakeScheduleModel().model);
+
+      await repository.findConflicting(context, window, session);
+
+      expect(seen[0]?.filter['_id']).toBeUndefined();
     });
 
     it('returns the conflicting document, or null when the slot is free', async () => {
@@ -148,6 +187,57 @@ describe('AppointmentRepository', () => {
 
       expect(saved[0]?.data).toEqual({ ...data, organizationId: 'org-1' });
       expect(saved[0]?.options).toEqual({ session });
+    });
+  });
+
+  describe('findOneInTransaction', () => {
+    it('scopes the snapshot read to the organization inside the caller’s transaction', async () => {
+      const doc = { _id: 'a1' } as unknown as AppointmentDoc;
+      const { model, seen } = fakeAppointmentModel(doc);
+      const repository = new AppointmentRepository(model, fakeScheduleModel().model);
+
+      const found = await repository.findOneInTransaction(context, { _id: 'a1' }, session);
+
+      expect(found).toBe(doc);
+      expect(seen[0]?.filter).toEqual({ _id: 'a1', organizationId: 'org-1' });
+      expect(seen[0]?.session).toBe(session);
+    });
+  });
+
+  describe('updateInTransaction', () => {
+    it('applies the update scoped to the organization inside the caller’s transaction', async () => {
+      const doc = { _id: 'a1', status: 'CONFIRMED' } as unknown as AppointmentDoc;
+      const { model, seen } = fakeUpdateModel(doc);
+      const repository = new AppointmentRepository(model, fakeScheduleModel().model);
+
+      const updated = await repository.updateInTransaction(
+        context,
+        { _id: 'a1', status: 'SCHEDULED' },
+        { status: 'CONFIRMED' },
+        session,
+      );
+
+      expect(updated).toBe(doc);
+      expect(seen[0]?.filter).toEqual({ _id: 'a1', status: 'SCHEDULED', organizationId: 'org-1' });
+      expect(seen[0]?.update).toEqual({ status: 'CONFIRMED' });
+      expect(seen[0]?.options).toEqual({ new: true, session });
+    });
+
+    it('returnPreUpdate yields the pre-update document for the audit capture', async () => {
+      const { model, seen } = fakeUpdateModel();
+      const repository = new AppointmentRepository(model, fakeScheduleModel().model);
+
+      await repository.updateInTransaction(
+        context,
+        { _id: 'a1' },
+        { start: window.start },
+        session,
+        {
+          returnPreUpdate: true,
+        },
+      );
+
+      expect(seen[0]?.options).toEqual({ new: false, session });
     });
   });
 });

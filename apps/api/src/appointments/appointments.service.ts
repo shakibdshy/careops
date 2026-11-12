@@ -4,9 +4,11 @@ import { ConflictException } from '@nestjs/common';
 import type { Connection, QueryFilter } from 'mongoose';
 import type {
   Appointment,
+  AppointmentStatus,
   AppointmentsListQuery,
   CreateAppointmentDto,
   CursorPage,
+  RescheduleAppointmentDto,
 } from '@careops/shared';
 import { AuditService } from '../audit/audit.service.js';
 import type { OrgRequestContext } from '../data/org-scoped.repository.js';
@@ -14,6 +16,11 @@ import type { FullOrganization } from '../auth/org-context.js';
 import { PatientRepository } from '../patients/patient.repository.js';
 import { AppointmentRepository } from './appointment.repository.js';
 import type { AppointmentDoc } from './appointment.schema.js';
+import {
+  ALLOWED_TRANSITIONS,
+  isAllowedTransition,
+  RESCHEDULABLE_STATUSES,
+} from './appointment-status.js';
 
 export interface AppointmentActor {
   id: string;
@@ -33,6 +40,48 @@ function toAppointmentDto(doc: AppointmentDoc): Appointment {
     createdAt: doc.createdAt.toISOString(),
     updatedAt: doc.updatedAt.toISOString(),
   };
+}
+
+function slotConflict(conflict: AppointmentDoc): ConflictException {
+  return new ConflictException({
+    statusCode: 409,
+    message: 'Provider already booked for an overlapping appointment',
+    errors: [
+      {
+        field: 'start',
+        message: `Conflicts with an appointment at ${conflict.start.toISOString()}`,
+      },
+    ],
+  });
+}
+
+function transitionConflict(from: AppointmentStatus, to: AppointmentStatus): ConflictException {
+  const allowed = ALLOWED_TRANSITIONS[from];
+  return new ConflictException({
+    statusCode: 409,
+    message: `Cannot transition an appointment from ${from} to ${to}`,
+    errors: [
+      {
+        field: 'status',
+        message: `Allowed transitions from ${from}: ${
+          allowed.length > 0 ? allowed.join(', ') : 'none (terminal status)'
+        }`,
+      },
+    ],
+  });
+}
+
+function notReschedulable(status: AppointmentStatus): ConflictException {
+  return new ConflictException({
+    statusCode: 409,
+    message: `Cannot reschedule an appointment in status ${status}`,
+    errors: [
+      {
+        field: 'status',
+        message: 'Only SCHEDULED or CONFIRMED appointments can be rescheduled',
+      },
+    ],
+  });
 }
 
 @Injectable()
@@ -88,16 +137,7 @@ export class AppointmentsService {
           txSession,
         );
         if (conflict) {
-          throw new ConflictException({
-            statusCode: 409,
-            message: 'Provider already booked for an overlapping appointment',
-            errors: [
-              {
-                field: 'start',
-                message: `Conflicts with an appointment at ${conflict.start.toISOString()}`,
-              },
-            ],
-          });
+          throw slotConflict(conflict);
         }
         return this.appointmentRepository.createInTransaction(
           context,
@@ -182,5 +222,148 @@ export class AppointmentsService {
       nextCursor: page.nextCursor,
       hasMore: page.hasMore,
     };
+  }
+
+  /**
+   * One lifecycle move. The write is a compare-and-swap on the observed
+   * status, so two concurrent transitions can never both apply: the loser
+   * matches nothing and gets a 409 naming the current allowed targets.
+   */
+  async transition(
+    context: OrgRequestContext,
+    actor: AppointmentActor,
+    appointmentId: string,
+    target: AppointmentStatus,
+  ): Promise<Appointment> {
+    const doc = await this.appointmentRepository.findOne(context, { _id: appointmentId });
+    if (!doc) {
+      throw new NotFoundException('Appointment not found');
+    }
+    const from = doc.status as AppointmentStatus;
+    if (!isAllowedTransition(from, target)) {
+      throw transitionConflict(from, target);
+    }
+    const before = await this.appointmentRepository.findOneAndUpdate(
+      context,
+      { _id: appointmentId, status: from },
+      { status: target, updatedAt: new Date() },
+      { returnPreUpdate: true },
+    );
+    if (!before) {
+      const current = await this.appointmentRepository.findOne(context, { _id: appointmentId });
+      if (!current) {
+        throw new NotFoundException('Appointment not found');
+      }
+      throw transitionConflict(current.status as AppointmentStatus, target);
+    }
+    const after = await this.appointmentRepository.findOne(context, { _id: appointmentId });
+    if (!after) {
+      throw new NotFoundException('Appointment not found');
+    }
+    await this.auditService.record({
+      context,
+      actor,
+      action: 'update',
+      entity: 'appointment',
+      entityId: appointmentId,
+      before: toAppointmentDto(before),
+      after: toAppointmentDto(after),
+    });
+    return toAppointmentDto(after);
+  }
+
+  /**
+   * Reschedule (glossary): only SCHEDULED or CONFIRMED appointments may move.
+   * The state gate, the Conflict re-check, and the update share one transaction
+   * with the booking serializer — the same engine as create, with the moved
+   * appointment excluded from its own overlap scan.
+   */
+  async reschedule(
+    context: OrgRequestContext,
+    orgMembers: FullOrganization['members'],
+    actor: AppointmentActor,
+    appointmentId: string,
+    dto: RescheduleAppointmentDto,
+  ): Promise<Appointment> {
+    if (dto.memberId !== undefined) {
+      const provider = orgMembers.find((member) => member.id === dto.memberId);
+      if (!provider) {
+        throw new NotFoundException('Provider member not found in organization');
+      }
+    }
+
+    const session = this.connection.getClient().startSession();
+    let before: AppointmentDoc | undefined;
+    try {
+      before = await session.withTransaction(async (txSession): Promise<AppointmentDoc> => {
+        const current = await this.appointmentRepository.findOneInTransaction(
+          context,
+          { _id: appointmentId },
+          txSession,
+        );
+        if (!current) {
+          throw new NotFoundException('Appointment not found');
+        }
+        const status = current.status as AppointmentStatus;
+        if (!RESCHEDULABLE_STATUSES.includes(status)) {
+          throw notReschedulable(status);
+        }
+        const memberId = dto.memberId ?? current.memberId;
+        const start = dto.start !== undefined ? new Date(dto.start) : current.start;
+        const durationMinutes = dto.durationMinutes ?? current.durationMinutes;
+        const end = new Date(start.getTime() + durationMinutes * 60_000);
+
+        await this.appointmentRepository.touchProviderSchedule(context, memberId, txSession);
+        const conflict = await this.appointmentRepository.findConflicting(
+          context,
+          { memberId, start, end, excludeId: appointmentId },
+          txSession,
+        );
+        if (conflict) {
+          throw slotConflict(conflict);
+        }
+        const pre = await this.appointmentRepository.updateInTransaction(
+          context,
+          { _id: appointmentId, status: { $in: [...RESCHEDULABLE_STATUSES] } },
+          { memberId, start, end, durationMinutes, updatedAt: new Date() },
+          txSession,
+          { returnPreUpdate: true },
+        );
+        if (!pre) {
+          // A concurrent transition moved the appointment out of a
+          // reschedulable state between the snapshot read and the write.
+          throw new ConflictException({
+            statusCode: 409,
+            message: 'Appointment changed concurrently, please retry',
+            errors: [],
+          });
+        }
+        return pre;
+      });
+    } finally {
+      await session.endSession();
+    }
+    if (!before) {
+      // Transient retry exhaustion — nothing was moved.
+      throw new ConflictException({
+        statusCode: 409,
+        message: 'Reschedule could not be completed, please retry',
+        errors: [],
+      });
+    }
+    const after = await this.appointmentRepository.findOne(context, { _id: appointmentId });
+    if (!after) {
+      throw new NotFoundException('Appointment not found');
+    }
+    await this.auditService.record({
+      context,
+      actor,
+      action: 'update',
+      entity: 'appointment',
+      entityId: appointmentId,
+      before: toAppointmentDto(before),
+      after: toAppointmentDto(after),
+    });
+    return toAppointmentDto(after);
   }
 }

@@ -83,6 +83,24 @@ type RepoOverrides = Partial<{
     context: OrgRequestContext,
     options: FindPageOptions,
   ) => Promise<CursorPage<AppointmentDoc>>;
+  findOneAndUpdate: (
+    context: OrgRequestContext,
+    filter: Record<string, unknown>,
+    update: Record<string, unknown>,
+    options: { returnPreUpdate?: boolean },
+  ) => Promise<AppointmentDoc | null>;
+  findOneInTransaction: (
+    context: OrgRequestContext,
+    filter: Record<string, unknown>,
+    session: ClientSession,
+  ) => Promise<AppointmentDoc | null>;
+  updateInTransaction: (
+    context: OrgRequestContext,
+    filter: Record<string, unknown>,
+    update: Record<string, unknown>,
+    session: ClientSession,
+    options: { returnPreUpdate?: boolean },
+  ) => Promise<AppointmentDoc | null>;
 }>;
 
 function fakeRepo(overrides: RepoOverrides = {}): AppointmentRepository {
@@ -92,8 +110,22 @@ function fakeRepo(overrides: RepoOverrides = {}): AppointmentRepository {
     createInTransaction: async () => appointmentDoc(),
     findOne: async () => appointmentDoc(),
     findPage: async () => ({ items: [appointmentDoc()], nextCursor: undefined, hasMore: false }),
+    findOneAndUpdate: async () => appointmentDoc(),
+    findOneInTransaction: async () => appointmentDoc(),
+    updateInTransaction: async () => appointmentDoc(),
   };
   return { ...base, ...overrides } as unknown as AppointmentRepository;
+}
+
+function conflictResponse(error: unknown): {
+  message: string;
+  errors: Array<{ field: string; message: string }>;
+} {
+  expect(error).toBeInstanceOf(ConflictException);
+  return (error as ConflictException).getResponse() as {
+    message: string;
+    errors: Array<{ field: string; message: string }>;
+  };
 }
 
 function fakePatientRepo(found: boolean): PatientRepository {
@@ -323,6 +355,287 @@ describe('AppointmentsService', () => {
     });
     expect(seen[1]?.filter).toEqual({
       start: { $lte: new Date('2026-11-30T00:00:00.000Z') },
+    });
+  });
+
+  describe('transition', () => {
+    it('applies an allowed transition with a status compare-and-swap and audits before→after', async () => {
+      const audit = fakeAudit();
+      const updates: Array<{ filter: Record<string, unknown>; update: Record<string, unknown> }> =
+        [];
+      const reads = [appointmentDoc(), appointmentDoc({ status: 'CONFIRMED' })];
+      const service = new AppointmentsService(
+        fakeRepo({
+          findOne: async () => reads.shift() ?? null,
+          findOneAndUpdate: async (_context, filter, update) => {
+            updates.push({ filter, update });
+            return appointmentDoc();
+          },
+        }),
+        fakePatientRepo(true),
+        audit,
+        fakeConnection(),
+      );
+
+      const result = await service.transition(context, actor, 'a1', 'CONFIRMED');
+
+      expect(result.status).toBe('CONFIRMED');
+      expect(updates[0]?.filter).toEqual({ _id: 'a1', status: 'SCHEDULED' });
+      expect(updates[0]?.update['status']).toBe('CONFIRMED');
+      expect(audit.records).toHaveLength(1);
+      const capture = audit.records[0] as {
+        action: string;
+        before: { status: string };
+        after: { status: string };
+      };
+      expect(capture.action).toBe('update');
+      expect(capture.before.status).toBe('SCHEDULED');
+      expect(capture.after.status).toBe('CONFIRMED');
+    });
+
+    it('rejects an illegal jump with 409 naming the allowed targets', async () => {
+      const service = new AppointmentsService(
+        fakeRepo({ findOne: async () => appointmentDoc({ status: 'CHECKED_IN' }) }),
+        fakePatientRepo(true),
+        fakeAudit(),
+        fakeConnection(),
+      );
+      const error = await service
+        .transition(context, actor, 'a1', 'NO_SHOW')
+        .catch((e: unknown) => e);
+      const response = conflictResponse(error);
+      expect(response.errors[0]?.field).toBe('status');
+      for (const allowed of ['IN_PROGRESS', 'COMPLETED', 'CANCELLED']) {
+        expect(response.errors[0]?.message).toContain(allowed);
+      }
+      expect(response.errors[0]?.message).not.toContain('NO_SHOW');
+    });
+
+    it('terminal statuses reject every target as none (terminal status)', async () => {
+      for (const terminal of ['COMPLETED', 'CANCELLED', 'NO_SHOW'] as const) {
+        const service = new AppointmentsService(
+          fakeRepo({ findOne: async () => appointmentDoc({ status: terminal }) }),
+          fakePatientRepo(true),
+          fakeAudit(),
+          fakeConnection(),
+        );
+        const error = await service
+          .transition(context, actor, 'a1', 'CONFIRMED')
+          .catch((e: unknown) => e);
+        expect(conflictResponse(error).errors[0]?.message).toContain('none (terminal status)');
+      }
+    });
+
+    it('is 404 for an appointment outside the organization', async () => {
+      const service = new AppointmentsService(
+        fakeRepo({ findOne: async () => null }),
+        fakePatientRepo(true),
+        fakeAudit(),
+        fakeConnection(),
+      );
+      await expect(service.transition(context, actor, 'missing', 'CONFIRMED')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('is 409 naming the current allowed targets when a concurrent transition won the CAS', async () => {
+      const reads = [appointmentDoc(), appointmentDoc({ status: 'CANCELLED' })];
+      const service = new AppointmentsService(
+        fakeRepo({
+          findOne: async () => reads.shift() ?? null,
+          findOneAndUpdate: async () => null,
+        }),
+        fakePatientRepo(true),
+        fakeAudit(),
+        fakeConnection(),
+      );
+      const error = await service
+        .transition(context, actor, 'a1', 'CONFIRMED')
+        .catch((e: unknown) => e);
+      expect(conflictResponse(error).errors[0]?.message).toContain('none (terminal status)');
+    });
+  });
+
+  describe('reschedule', () => {
+    it('merges partial fields, excludes itself from the Conflict scan, and audits before→after', async () => {
+      const audit = fakeAudit();
+      const windows: BookingWindow[] = [];
+      const updates: Array<{ filter: Record<string, unknown>; update: Record<string, unknown> }> =
+        [];
+      const service = new AppointmentsService(
+        fakeRepo({
+          findConflicting: async (_context, window) => {
+            windows.push(window);
+            return null;
+          },
+          updateInTransaction: async (_context, filter, update) => {
+            updates.push({ filter, update });
+            return appointmentDoc();
+          },
+          findOne: async () =>
+            appointmentDoc({
+              start: new Date('2026-11-20T11:00:00.000Z'),
+              end: new Date('2026-11-20T11:30:00.000Z'),
+            }),
+        }),
+        fakePatientRepo(true),
+        audit,
+        fakeConnection(),
+      );
+
+      const result = await service.reschedule(context, members, actor, 'a1', {
+        start: '2026-11-20T11:00:00.000Z',
+      });
+
+      expect(result.start).toBe('2026-11-20T11:00:00.000Z');
+      expect(windows[0]).toEqual({
+        memberId: 'member-2',
+        start: new Date('2026-11-20T11:00:00.000Z'),
+        end: new Date('2026-11-20T11:30:00.000Z'),
+        excludeId: 'a1',
+      });
+      expect(updates[0]?.filter).toEqual({
+        _id: 'a1',
+        status: { $in: ['SCHEDULED', 'CONFIRMED'] },
+      });
+      expect(updates[0]?.update['durationMinutes']).toBe(30);
+      expect(updates[0]?.update['memberId']).toBe('member-2');
+      expect(audit.records).toHaveLength(1);
+      const capture = audit.records[0] as {
+        action: string;
+        before: { start: string };
+        after: { start: string };
+      };
+      expect(capture.action).toBe('update');
+      expect(capture.before.start).toBe('2026-11-20T10:00:00.000Z');
+      expect(capture.after.start).toBe('2026-11-20T11:00:00.000Z');
+    });
+
+    it('derives end from the new duration when only duration changes', async () => {
+      const windows: BookingWindow[] = [];
+      const service = new AppointmentsService(
+        fakeRepo({
+          findConflicting: async (_context, window) => {
+            windows.push(window);
+            return null;
+          },
+        }),
+        fakePatientRepo(true),
+        fakeAudit(),
+        fakeConnection(),
+      );
+      await service.reschedule(context, members, actor, 'a1', { durationMinutes: 60 });
+      expect(windows[0]?.start).toEqual(new Date('2026-11-20T10:00:00.000Z'));
+      expect(windows[0]?.end).toEqual(new Date('2026-11-20T11:00:00.000Z'));
+    });
+
+    it('serializes on the new Provider when memberId changes', async () => {
+      const touched: string[] = [];
+      const windows: BookingWindow[] = [];
+      const service = new AppointmentsService(
+        fakeRepo({
+          touchProviderSchedule: async (_context, memberId) => {
+            touched.push(memberId);
+          },
+          findConflicting: async (_context, window) => {
+            windows.push(window);
+            return null;
+          },
+        }),
+        fakePatientRepo(true),
+        fakeAudit(),
+        fakeConnection(),
+      );
+      await service.reschedule(context, members, actor, 'a1', { memberId: 'member-1' });
+      expect(touched).toEqual(['member-1']);
+      expect(windows[0]?.memberId).toBe('member-1');
+    });
+
+    it('rejects rescheduling out of SCHEDULED/CONFIRMED with 409 and writes no audit', async () => {
+      for (const status of [
+        'CHECKED_IN',
+        'IN_PROGRESS',
+        'COMPLETED',
+        'CANCELLED',
+        'NO_SHOW',
+      ] as const) {
+        const audit = fakeAudit();
+        const service = new AppointmentsService(
+          fakeRepo({ findOneInTransaction: async () => appointmentDoc({ status }) }),
+          fakePatientRepo(true),
+          audit,
+          fakeConnection(),
+        );
+        const error = await service
+          .reschedule(context, members, actor, 'a1', { durationMinutes: 45 })
+          .catch((e: unknown) => e);
+        expect(conflictResponse(error).message).toContain(status);
+        expect(audit.records).toHaveLength(0);
+      }
+    });
+
+    it('rejects an overlapping new slot with 409 and writes no audit', async () => {
+      const audit = fakeAudit();
+      const service = new AppointmentsService(
+        fakeRepo({ findConflicting: async () => appointmentDoc() }),
+        fakePatientRepo(true),
+        audit,
+        fakeConnection(),
+      );
+      const error = await service
+        .reschedule(context, members, actor, 'a1', { start: '2026-11-20T10:15:00.000Z' })
+        .catch((e: unknown) => e);
+      expect(conflictResponse(error).message).toMatch(/overlap/i);
+      expect(audit.records).toHaveLength(0);
+    });
+
+    it('is 404 when the new Provider member is not in the organization', async () => {
+      const service = new AppointmentsService(
+        fakeRepo(),
+        fakePatientRepo(true),
+        fakeAudit(),
+        fakeConnection(),
+      );
+      await expect(
+        service.reschedule(context, members, actor, 'a1', { memberId: 'missing' }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('is 404 for an appointment outside the organization', async () => {
+      const service = new AppointmentsService(
+        fakeRepo({ findOneInTransaction: async () => null }),
+        fakePatientRepo(true),
+        fakeAudit(),
+        fakeConnection(),
+      );
+      await expect(
+        service.reschedule(context, members, actor, 'missing', { durationMinutes: 45 }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('is 409 when a concurrent transition wins the state CAS', async () => {
+      const service = new AppointmentsService(
+        fakeRepo({ updateInTransaction: async () => null }),
+        fakePatientRepo(true),
+        fakeAudit(),
+        fakeConnection(),
+      );
+      const error = await service
+        .reschedule(context, members, actor, 'a1', { durationMinutes: 45 })
+        .catch((e: unknown) => e);
+      expect(conflictResponse(error).message).toMatch(/concurrently/i);
+    });
+
+    it('is 409 when the transaction aborts without an application error', async () => {
+      const service = new AppointmentsService(
+        fakeRepo(),
+        fakePatientRepo(true),
+        fakeAudit(),
+        abortingConnection(),
+      );
+      await expect(
+        service.reschedule(context, members, actor, 'a1', { durationMinutes: 45 }),
+      ).rejects.toThrow(ConflictException);
     });
   });
 });

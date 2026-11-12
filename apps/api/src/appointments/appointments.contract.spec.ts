@@ -1,7 +1,9 @@
 import {
   appointmentStatusSchema,
+  appointmentTransitionSchema,
   appointmentsListQuerySchema,
   createAppointmentSchema,
+  rescheduleAppointmentSchema,
 } from '@careops/shared';
 
 const validBooking = {
@@ -121,5 +123,53 @@ describe('appointmentsListQuerySchema (filter validation)', () => {
   it('rejects malformed window datetimes', () => {
     expect(appointmentsListQuerySchema.safeParse({ from: 'yesterday' }).success).toBe(false);
     expect(appointmentsListQuerySchema.safeParse({ to: '2026-12-01' }).success).toBe(false);
+  });
+});
+
+describe('appointmentTransitionSchema (transition body)', () => {
+  it('accepts every lifecycle status as the target', () => {
+    for (const status of appointmentStatusSchema.options) {
+      expect(appointmentTransitionSchema.safeParse({ status }).success).toBe(true);
+    }
+  });
+
+  it('rejects unknown statuses and a missing target', () => {
+    expect(appointmentTransitionSchema.safeParse({ status: 'RESCHEDULED' }).success).toBe(false);
+    expect(appointmentTransitionSchema.safeParse({}).success).toBe(false);
+  });
+});
+
+describe('rescheduleAppointmentSchema (reschedule validation)', () => {
+  const start = '2026-12-01T10:00:00.000Z';
+
+  it('accepts any single field or combination', () => {
+    expect(rescheduleAppointmentSchema.safeParse({ start }).success).toBe(true);
+    expect(rescheduleAppointmentSchema.safeParse({ durationMinutes: 45 }).success).toBe(true);
+    expect(rescheduleAppointmentSchema.safeParse({ memberId: 'member-9' }).success).toBe(true);
+    expect(
+      rescheduleAppointmentSchema.safeParse({ start, durationMinutes: 45, memberId: 'member-9' })
+        .success,
+    ).toBe(true);
+  });
+
+  it('rejects an empty patch, naming the missing fields', () => {
+    const result = rescheduleAppointmentSchema.safeParse({});
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.message).toMatch(/at least one/i);
+    }
+  });
+
+  it('reuses the booking bounds for duration, start, and Provider id', () => {
+    for (const durationMinutes of [14, 481, 30.5]) {
+      expect(rescheduleAppointmentSchema.safeParse({ durationMinutes }).success).toBe(false);
+    }
+    expect(rescheduleAppointmentSchema.safeParse({ durationMinutes: 15 }).success).toBe(true);
+    expect(rescheduleAppointmentSchema.safeParse({ durationMinutes: 480 }).success).toBe(true);
+    expect(rescheduleAppointmentSchema.safeParse({ start: 'not-a-datetime' }).success).toBe(false);
+    expect(
+      rescheduleAppointmentSchema.safeParse({ start: '2026-12-01T12:00:00.000+02:00' }).success,
+    ).toBe(true);
+    expect(rescheduleAppointmentSchema.safeParse({ memberId: '' }).success).toBe(false);
   });
 });

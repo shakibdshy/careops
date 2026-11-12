@@ -48,6 +48,29 @@ export const createAppointmentSchema = z.object({
 });
 export type CreateAppointmentDto = z.infer<typeof createAppointmentSchema>;
 
+/** Single transition endpoint body: the target status of the lifecycle. */
+export const appointmentTransitionSchema = z.object({
+  status: appointmentStatusSchema,
+});
+export type AppointmentTransitionDto = z.infer<typeof appointmentTransitionSchema>;
+
+/**
+ * Reschedule (glossary): change an upcoming Appointment's start, duration, or
+ * Provider. At least one field is required; the API re-runs the Conflict check.
+ */
+export const rescheduleAppointmentSchema = z
+  .object({
+    start: z.iso.datetime({ offset: true }).optional(),
+    durationMinutes: z.number().int().min(15).max(480).optional(),
+    memberId: memberIdSchema.optional(),
+  })
+  .refine(
+    (dto) =>
+      dto.start !== undefined || dto.durationMinutes !== undefined || dto.memberId !== undefined,
+    { message: 'at least one of start, durationMinutes, or memberId is required' },
+  );
+export type RescheduleAppointmentDto = z.infer<typeof rescheduleAppointmentSchema>;
+
 /** List filters + ADR-0008 cursor paging; malformed values are 400s, never CastErrors. */
 export const appointmentsListQuerySchema = z
   .object({
