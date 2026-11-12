@@ -27,6 +27,7 @@ function toPatientDto(doc: PatientDoc): Patient {
     lastName: doc.lastName,
     dateOfBirth: doc.dateOfBirth.toISOString(),
     phone: doc.phone,
+    contactEmail: doc.contactEmail,
     notes: doc.notes,
     createdAt: doc.createdAt.toISOString(),
     updatedAt: doc.updatedAt.toISOString(),

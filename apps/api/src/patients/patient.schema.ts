@@ -18,6 +18,9 @@ export class PatientDocument {
   @Prop({ maxLength: 20 })
   phone?: string;
 
+  @Prop({ maxLength: 254 })
+  contactEmail?: string;
+
   @Prop({ maxLength: 2000 })
   notes?: string;
 
