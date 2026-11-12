@@ -1,0 +1,275 @@
+# CareOps infrastructure (AWS CDK)
+
+In-repo CDK app (TypeScript) that deploys CareOps to AWS and to the [Floci](https://floci.io)
+local emulator from the **same stack**. Architecture and trade-offs are recorded in
+[ADR-0012](../docs/adr/0012-aws-deployment-architecture.md).
+
+This workspace currently ships the **W3-T2 tracer bullet**: one stateless API Fargate replica
+behind an internet-facing ALB (`/api/*` → API, stickiness off, health check `/api/health`),
+ElastiCache Redis, an ECR repository, runtime secrets, and CloudWatch logs. Later Week-3
+tickets add the SSR web tier behind the same ALB, CloudFront, and target-tracking auto-scaling.
+
+`target` switches **only the data plane** (where Mongo/Redis live), never the topology:
+
+| `target` | Mongo                                          | Redis                                        | Use                      |
+| -------- | ---------------------------------------------- | -------------------------------------------- | ------------------------ |
+| `floci`  | compose replica set via `host.docker.internal` | compose Redis via `host.docker.internal`     | local proof, no AWS bill |
+| `aws`    | MongoDB Atlas (URI secret)                     | ElastiCache (derived from the cache cluster) | real deploy              |
+
+## Layout
+
+```text
+infra/
+├── bin/app.ts                 # entry: reads context/env, sets env-agnostic vs concrete env
+├── lib/careops-stack.ts       # the stack (network, ECR, secrets, Redis, ECS, ALB, outputs)
+├── test/careops-stack.test.ts # CDK template assertions (node:test + tsx)
+├── scripts/floci-proof.mjs    # Floci operator steps: populate secrets, verify steady + health
+├── cdk.json                   # app command + feature flags
+└── cdk.context.json           # cached Floci AZ lookup (account 000000000000, us-east-1)
+```
+
+## Prerequisites
+
+- [Bun](https://bun.sh) 1.4.3 and Node 24 (the repo toolchain).
+- Docker — OrbStack or Docker Desktop. Floci runs ECS tasks and ElastiCache as **real Docker
+  containers**, so it needs the Docker socket.
+- Repo dependencies installed: `bun install` from the repo root.
+
+All commands below run from `infra/`.
+
+## Commands
+
+| Command                              | What it does                                                                         |
+| ------------------------------------ | ------------------------------------------------------------------------------------ |
+| `bun run synth`                      | `cdk synth` — emit the CloudFormation template (offline, no credentials)             |
+| `bun run test`                       | CDK template assertions (routing, stickiness-off, health path, no plaintext secrets) |
+| `bun run lint` / `bun run typecheck` | ESLint / `tsc --noEmit`                                                              |
+| `bun run deploy`                     | `cdk deploy` (pass `-c` context, see below)                                          |
+| `bun run diff`                       | `cdk diff` against the deployed stack                                                |
+| `bun run destroy`                    | `cdk destroy`                                                                        |
+| `bun run floci:secrets`              | populate the three runtime secrets in Floci                                          |
+| `bun run floci:verify`               | wait for the service to reach steady state, then probe `/api/health`                 |
+
+### Context flags
+
+`bin/app.ts` reads these from CDK context (`-c key=value`) or the matching `CAREOPS_*` env var:
+
+| Flag             | Env fallback              | Default  | Meaning                                                                       |
+| ---------------- | ------------------------- | -------- | ----------------------------------------------------------------------------- |
+| `target`         | `CAREOPS_DEPLOY_TARGET`   | `aws`    | `aws` or `floci`                                                              |
+| `desiredCount`   | `CAREOPS_DESIRED_COUNT`   | `1`      | API replica count                                                             |
+| `imageTag`       | `CAREOPS_IMAGE_TAG`       | `latest` | ECR image tag to deploy                                                       |
+| `certificateArn` | `CAREOPS_CERTIFICATE_ARN` | unset    | ACM cert; when set, ALB serves HTTPS + redirects HTTP                         |
+| `redisUrl`       | `CAREOPS_REDIS_URL`       | derived  | override the Redis URL (defaults: ElastiCache for `aws`, compose for `floci`) |
+
+`synth` and `test` are **env-agnostic**: with no `CDK_DEFAULT_ACCOUNT`/`CDK_DEFAULT_REGION` the
+stack uses placeholder AZs and needs no credentials. A concrete env is set only when the CDK
+CLI resolves credentials, so `cdk deploy` uses the account's real AZs.
+
+## Deploy to Floci (local, no AWS account)
+
+This is the verified local proof. Floci emulates ECS/ELBv2/ECR/ElastiCache/Secrets Manager/
+CloudFormation at `http://localhost:4566`; Mongo/Redis/SMTP stay on the existing compose data
+plane. ADR-0012 scopes Floci as **operation-level validation, not a fidelity guarantee** — see
+the caveats below.
+
+### 1. Start Floci on a user-defined Docker network
+
+Floci must run on a **user-defined network**, not the default bridge. Floci spawns its own ECR
+registry container and reaches it by container name (`floci-aws-ecr-registry:5000`); name DNS
+only resolves on a user-defined network. On the default bridge the registry is unreachable and
+image pushes fail.
+
+```sh
+docker network create floci-net
+docker run -d --name floci --network floci-net -p 4566:4566 \
+  -v /var/run/docker.sock:/var/run/docker.sock -u root floci/floci:latest
+```
+
+Floci defaults to in-memory storage, so its state is wiped on restart. Re-run the deploy steps
+after restarting the container.
+
+### 2. Start the compose data plane
+
+From the repo root:
+
+```sh
+bun run boot:infra   # docker compose up -d: mongo (rs0), redis, mailpit
+```
+
+These publish on host loopback (`127.0.0.1:27017/6379/1025`). Floci tasks run on `floci-net`,
+not the compose network, so they reach the data plane through the host gateway
+`host.docker.internal` (OrbStack/Docker Desktop). The stack bakes this as the `floci` Redis
+default, and `floci:secrets` writes the Mongo/SMTP URLs with the same host.
+
+### 3. Build the API image
+
+From the repo root (the Dockerfile builds the workspace, so the context is the root):
+
+```sh
+docker build -f apps/api/Dockerfile -t careops-api:local .
+```
+
+### 4. Point the toolchain at Floci
+
+```sh
+export AWS_ENDPOINT_URL=http://localhost:4566
+export AWS_ACCESS_KEY_ID=test
+export AWS_SECRET_ACCESS_KEY=test
+export AWS_DEFAULT_REGION=us-east-1
+export CDK_DEFAULT_ACCOUNT=000000000000
+export CDK_DEFAULT_REGION=us-east-1
+```
+
+### 5. Bootstrap, then deploy the infrastructure at zero replicas
+
+Bootstrap once per account/region (creates the `CDKToolkit` stack). Deploy with `desiredCount=0`
+first: this creates the ECR repository and the empty secrets **without** launching tasks that
+would fail before the image and secret values exist.
+
+```sh
+bunx cdk bootstrap aws://000000000000/us-east-1
+bunx cdk deploy CareOpsStack -c target=floci -c desiredCount=0 -c imageTag=local --require-approval never
+```
+
+### 6. Push the image to Floci's ECR
+
+Floci's pushable registry endpoint is the `*.localhost:4566` proxy (resolves to `127.0.0.1`),
+**not** the `amazonaws.com` URI in the CloudFormation output. Credentials are `AWS` / `floci`.
+The endpoint is plain HTTP, so Docker must allow it as an insecure registry — OrbStack permits
+`127.0.0.0/8` by default; on Docker Desktop add `000000000000.dkr.ecr.us-east-1.localhost:4566`
+to `insecure-registries`.
+
+```sh
+docker login -u AWS -p floci 000000000000.dkr.ecr.us-east-1.localhost:4566
+docker tag careops-api:local 000000000000.dkr.ecr.us-east-1.localhost:4566/careops-api:local
+docker push 000000000000.dkr.ecr.us-east-1.localhost:4566/careops-api:local
+```
+
+### 7. Populate the runtime secrets
+
+```sh
+bun run floci:secrets
+```
+
+Writes `careops/mongodb-uri` (compose Mongo via `host.docker.internal`, `directConnection=true`),
+`careops/smtp-url` (compose Mailpit), and a freshly generated `careops/better-auth-secret`. The
+script logs only each secret's name, version, and length — never its value.
+
+### 8. Scale to one replica and verify
+
+```sh
+bunx cdk deploy CareOpsStack -c target=floci -c desiredCount=1 -c imageTag=local --require-approval never
+bun run floci:verify
+```
+
+`floci:verify` waits for the service to reach steady state (`running == desired`, one deployment,
+`rolloutState=COMPLETED`) and then probes `/api/health` **inside the task container**. Expected:
+
+```text
+steady: desired=1 running=1 rollout=COMPLETED
+health: {"status":"ok","service":"careops-api","mongo":"up","redis":"up"}
+Floci proof OK: one API replica steady with green /api/health on compose Mongo/Redis.
+```
+
+### Floci fidelity caveats
+
+- **The ALB is metadata-only.** Floci's ELBv2 records the load balancer/listener/target-group but
+  does not proxy HTTP to tasks, so the ALB DNS output does not serve traffic locally. Routing is
+  proven by the template assertions and by a real AWS deploy; local health is probed in-task.
+- **ECS health is `UNKNOWN`.** Floci does not wire the container `healthCheck` into ECS task
+  health, so `floci:verify` probes the API directly rather than reading ECS health status.
+- These are emulator limits, not stack defects (ADR-0012). Floci never substitutes for a real
+  staging deploy or the k6 scaling measurement.
+
+## Deploy to AWS (credential-gated)
+
+The same stack targets real AWS. **This path requires resources only the operator can provide**
+— an AWS account/credentials, a MongoDB Atlas cluster, and (for TLS) an ACM certificate — so it
+is documented here, not executed by CI. Mongo is the only service outside AWS; Redis is
+ElastiCache, derived automatically.
+
+### 1. Prerequisites
+
+- AWS credentials for the target account (the CDK CLI resolves `CDK_DEFAULT_ACCOUNT`/`REGION`).
+- A MongoDB Atlas cluster (replica set, for ADR-0010 transactions) with a database user and a
+  network path from the VPC — public endpoint + IP allowlist, or VPC peering/PrivateLink.
+- An ACM certificate in the deploy region for the API domain (optional; without it the ALB is
+  HTTP-only).
+- Docker, to build and push the API image.
+
+### 2. Bootstrap and deploy at zero replicas
+
+```sh
+bunx cdk bootstrap aws://<ACCOUNT>/<REGION>
+bunx cdk deploy CareOpsStack -c target=aws -c desiredCount=0 -c imageTag=latest --require-approval never
+```
+
+Note the `EcrRepositoryUri`, `AlbDnsName`, and secret ARNs in the outputs.
+
+### 3. Build and push the image to real ECR
+
+```sh
+docker build -f apps/api/Dockerfile -t careops-api:latest .
+aws ecr get-login-password --region <REGION> \
+  | docker login --username AWS --password-stdin <ACCOUNT>.dkr.ecr.<REGION>.amazonaws.com
+docker tag careops-api:latest <EcrRepositoryUri>:latest
+docker push <EcrRepositoryUri>:latest
+```
+
+### 4. Populate the runtime secrets
+
+Secrets are created empty and populated out-of-band — no credential ever lands in the template
+or repo. `REDIS_URL` is **not** a secret: the stack derives it from the ElastiCache cluster.
+
+```sh
+aws secretsmanager put-secret-value --secret-id careops/mongodb-uri \
+  --secret-string 'mongodb+srv://<user>:<pass>@<cluster>.mongodb.net/careops?retryWrites=true&w=majority'
+aws secretsmanager put-secret-value --secret-id careops/better-auth-secret \
+  --secret-string "$(openssl rand -hex 32)"
+aws secretsmanager put-secret-value --secret-id careops/smtp-url \
+  --secret-string 'smtp://<user>:<pass>@<smtp-host>:587'
+```
+
+### 5. Scale up (with TLS) and verify
+
+```sh
+bunx cdk deploy CareOpsStack -c target=aws -c desiredCount=1 -c imageTag=latest \
+  -c certificateArn=<ACM_ARN> --require-approval never
+curl https://<AlbDnsName>/api/health
+```
+
+Expected: `{"status":"ok","service":"careops-api","mongo":"up","redis":"up"}` — `mongo: up`
+confirms Atlas reachability, `redis: up` confirms ElastiCache. With a certificate the ALB serves
+HTTPS and redirects HTTP; without one, probe `http://<AlbDnsName>/api/health`.
+
+## Secrets
+
+The task definition references secrets by ARN (`Secrets`/`ValueFrom`), never plaintext
+(`Environment`). The three secrets — Mongo URI, BetterAuth secret, SMTP URL — are created as
+empty shells and populated after deploy (Floci: `floci:secrets`; AWS: the operator). The
+assertion tests fail the build if any credential appears as a plaintext environment variable or
+an inline secret value in the template.
+
+## Assertion tests
+
+`bun run test` synthesizes the stack offline and asserts the deploy contract:
+
+- `/api/*` forwards to the API target group; default action is 404.
+- Target-group stickiness is disabled; health check is `/api/health` on the API port.
+- Credentials resolve from Secrets Manager at runtime; no plaintext secret in the task
+  definition and no inline secret value in the template.
+- `desiredCount` is parameterized; the ALB is internet-facing; HTTP-only by default, HTTPS +
+  redirect when a certificate is supplied.
+- ECR, ElastiCache Redis, and a CloudWatch log group are provisioned; `aws` derives `REDIS_URL`
+  from ElastiCache while `floci` uses compose Redis; tasks run in private subnets with a
+  deployment circuit breaker.
+
+## Teardown
+
+```sh
+bunx cdk destroy CareOpsStack -c target=floci   # or target=aws
+```
+
+The ECR repository (`emptyOnDelete`) and log group are destroyed with the stack. Floci's
+in-memory state also clears when the container stops.

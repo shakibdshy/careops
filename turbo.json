@@ -3,7 +3,7 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": ["dist/**", "build/**", ".output/**"]
+      "outputs": ["dist/**", "build/**", ".output/**", "cdk.out/**"]
     },
     // Every lane builds dependency packages first: @careops/shared resolves
     // through its compiled dist (Node ESM cannot load .js specifiers inside

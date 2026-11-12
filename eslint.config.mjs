@@ -10,6 +10,7 @@ export default tseslint.config(
       '**/build/**',
       '**/coverage/**',
       '**/.turbo/**',
+      '**/cdk.out/**',
       '**/node_modules/**',
       '**/.output/**',
       '**/.vinxi/**',
@@ -23,6 +24,8 @@ export default tseslint.config(
       // covers the root — same rationale as the config files above. Prettier
       // still formats them; CI's per-package turbo lint never reaches tools/.
       'tools/**',
+      // Floci deploy-proof harness (W3-T2): standalone node .mjs, no tsconfig coverage — same rationale as tools/.
+      'infra/scripts/**',
     ],
   },
   eslint.configs.recommended,
@@ -59,6 +62,14 @@ export default tseslint.config(
     files: ['**/*.spec.ts', '**/*.e2e-spec.ts'],
     rules: {
       '@typescript-eslint/require-await': 'off',
+    },
+  },
+  {
+    // CDK assertion tests use node:test, whose test() registration returns a
+    // promise the runner owns — callers neither await nor handle it.
+    files: ['infra/test/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-floating-promises': 'off',
     },
   },
 );
