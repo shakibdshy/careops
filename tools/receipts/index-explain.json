@@ -1,0 +1,102 @@
+{
+  "generatedAt": "2026-11-12T18:02:22.967Z",
+  "database": "careops_t9_receipts",
+  "organizationId": "6af5ff08cc11c13a326a32ad",
+  "collectionCounts": {
+    "demoOrg": 20000,
+    "total": 80000
+  },
+  "runsPerPlan": 7,
+  "overlap": {
+    "filter": {
+      "organizationId": "6af5ff08cc11c13a326a32ad",
+      "memberId": "6af5ff0976eb97e38923d688",
+      "status": {
+        "$nin": [
+          "CANCELLED",
+          "NO_SHOW"
+        ]
+      },
+      "start": {
+        "$lt": "2026-11-12T11:30:00.000Z"
+      },
+      "end": {
+        "$gt": "2026-11-12T11:00:00.000Z"
+      }
+    },
+    "before": {
+      "nReturned": 1,
+      "totalDocsExamined": 80000,
+      "totalKeysExamined": 0,
+      "executionTimeMillisMedian": 11,
+      "runs": [
+        13,
+        12,
+        11,
+        11,
+        12,
+        11,
+        11
+      ],
+      "stages": "COLLSCAN",
+      "indexName": null,
+      "collscan": true
+    },
+    "after": {
+      "nReturned": 1,
+      "totalDocsExamined": 479,
+      "totalKeysExamined": 479,
+      "executionTimeMillisMedian": 1,
+      "runs": [
+        2,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "stages": "FETCH -> IXSCAN",
+      "indexName": "org_member_start",
+      "collscan": false
+    }
+  },
+  "list": {
+    "before": {
+      "nReturned": 21,
+      "totalDocsExamined": 60021,
+      "totalKeysExamined": 60021,
+      "executionTimeMillisMedian": 35,
+      "runs": [
+        52,
+        35,
+        35,
+        36,
+        41,
+        34,
+        34
+      ],
+      "stages": "LIMIT -> FETCH -> IXSCAN",
+      "indexName": "_id_",
+      "collscan": false
+    },
+    "after": {
+      "nReturned": 21,
+      "totalDocsExamined": 21,
+      "totalKeysExamined": 21,
+      "executionTimeMillisMedian": 0,
+      "runs": [
+        2,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "stages": "LIMIT -> FETCH -> IXSCAN",
+      "indexName": "org_id_cursor",
+      "collscan": false
+    }
+  }
+}

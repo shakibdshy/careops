@@ -1,0 +1,140 @@
+{
+  "generatedAt": "2026-11-12T18:04:51.378Z",
+  "webUrl": "http://localhost:3010",
+  "apiUrl": "http://localhost:3011",
+  "target": "/dashboard (authenticated; session cookie injected via --extra-headers)",
+  "build": "production (vite build + vite preview)",
+  "categories": [
+    "performance",
+    "accessibility",
+    "best-practices",
+    "seo"
+  ],
+  "runs": [
+    {
+      "label": "mobile (default)",
+      "requestedUrl": "http://localhost:3010/dashboard",
+      "finalDisplayedUrl": "http://localhost:3010/dashboard",
+      "fetchTime": "2026-11-12T18:04:32.925Z",
+      "lighthouseVersion": "13.6.0",
+      "formFactor": "mobile",
+      "throttlingMethod": "simulate",
+      "throttling": {
+        "rttMs": 150,
+        "throughputKbps": 1638.4,
+        "requestLatencyMs": 562.5,
+        "downloadThroughputKbps": 1474.5600000000002,
+        "uploadThroughputKbps": 675,
+        "cpuSlowdownMultiplier": 4
+      },
+      "screenEmulation": {
+        "mobile": true,
+        "width": 412,
+        "height": 823,
+        "deviceScaleFactor": 1.75,
+        "disabled": false
+      },
+      "scores": {
+        "performance": 89,
+        "accessibility": 98,
+        "best-practices": 96,
+        "seo": 90
+      },
+      "metrics": {
+        "first-contentful-paint": {
+          "score": 100,
+          "numericValue": 757.3208999999999,
+          "displayValue": "0.8 s"
+        },
+        "largest-contentful-paint": {
+          "score": 55,
+          "numericValue": 3796.9813499999996,
+          "displayValue": "3.8 s"
+        },
+        "total-blocking-time": {
+          "score": 100,
+          "numericValue": 0,
+          "displayValue": "0 ms"
+        },
+        "cumulative-layout-shift": {
+          "score": 100,
+          "numericValue": 0,
+          "displayValue": "0"
+        },
+        "speed-index": {
+          "score": 100,
+          "numericValue": 1544.544518008218,
+          "displayValue": "1.5 s"
+        },
+        "interactive": {
+          "score": 89,
+          "numericValue": 3796.9813499999996,
+          "displayValue": "3.8 s"
+        }
+      }
+    },
+    {
+      "label": "desktop",
+      "requestedUrl": "http://localhost:3010/dashboard",
+      "finalDisplayedUrl": "http://localhost:3010/dashboard",
+      "fetchTime": "2026-11-12T18:04:43.219Z",
+      "lighthouseVersion": "13.6.0",
+      "formFactor": "desktop",
+      "throttlingMethod": "simulate",
+      "throttling": {
+        "rttMs": 40,
+        "throughputKbps": 10240,
+        "requestLatencyMs": 0,
+        "downloadThroughputKbps": 0,
+        "uploadThroughputKbps": 0,
+        "cpuSlowdownMultiplier": 1
+      },
+      "screenEmulation": {
+        "mobile": false,
+        "width": 1350,
+        "height": 940,
+        "deviceScaleFactor": 1,
+        "disabled": false
+      },
+      "scores": {
+        "performance": 100,
+        "accessibility": 98,
+        "best-practices": 96,
+        "seo": 90
+      },
+      "metrics": {
+        "first-contentful-paint": {
+          "score": 100,
+          "numericValue": 288.1494,
+          "displayValue": "0.3 s"
+        },
+        "largest-contentful-paint": {
+          "score": 98,
+          "numericValue": 816.7241,
+          "displayValue": "0.8 s"
+        },
+        "total-blocking-time": {
+          "score": 100,
+          "numericValue": 0,
+          "displayValue": "0 ms"
+        },
+        "cumulative-layout-shift": {
+          "score": 100,
+          "numericValue": 0.01256731738924241,
+          "displayValue": "0.013"
+        },
+        "speed-index": {
+          "score": 100,
+          "numericValue": 393.5560186888917,
+          "displayValue": "0.4 s"
+        },
+        "interactive": {
+          "score": 100,
+          "numericValue": 816.7241000000001,
+          "displayValue": "0.8 s"
+        }
+      }
+    }
+  ],
+  "screenshot": "lighthouse-dashboard.jpg"
+}

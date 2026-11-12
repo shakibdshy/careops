@@ -7,3 +7,5 @@ bun.lock
 playwright-report
 test-results
 routeTree.gen.ts
+# Generated measurement artifacts (W2-T9 receipts): data, not source.
+tools/receipts

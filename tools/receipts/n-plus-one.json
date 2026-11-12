@@ -1,0 +1,45 @@
+{
+  "generatedAt": "2026-11-12T18:02:23.281Z",
+  "database": "careops_t9_receipts",
+  "organizationId": "6af5ff08cc11c13a326a32ad",
+  "window": {
+    "days": 30,
+    "start": "2026-10-14T00:00:00.000Z",
+    "end": "2026-11-13T00:00:00.000Z"
+  },
+  "providers": 43,
+  "runsPerPath": 7,
+  "cacheBypassed": true,
+  "resultsMatch": true,
+  "shipped": {
+    "strategy": "one aggregate with two server-side $lookups",
+    "queryCount": 1,
+    "wallMsMedian": 5.96,
+    "runs": [
+      7.07,
+      6.53,
+      5.7,
+      5.96,
+      5.81,
+      6.21,
+      5.36
+    ]
+  },
+  "naive": {
+    "strategy": "one $group aggregate + findOne(member) + findOne(user) per Provider",
+    "queryCount": 87,
+    "queryCountFormula": "1 + 2 * 43 = 87",
+    "wallMsMedian": 18.12,
+    "runs": [
+      24.32,
+      19.27,
+      18.12,
+      18.4,
+      17.02,
+      16.95,
+      17.18
+    ]
+  },
+  "queryReduction": 87,
+  "speedup": 3.04
+}
