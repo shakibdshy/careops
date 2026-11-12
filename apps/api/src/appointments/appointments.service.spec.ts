@@ -11,6 +11,7 @@ import type { PatientRepository } from '../patients/patient.repository.js';
 import type { PatientDoc } from '../patients/patient.schema.js';
 import { AuditService } from '../audit/audit.service.js';
 import type { FullOrganization } from '../auth/org-context.js';
+import type { ReportsCache } from '../reports/reports.cache.js';
 
 const context = { organizationId: 'org-1' };
 const actor = { id: 'user-1', email: 'owner@example.test' };
@@ -144,6 +145,10 @@ function fakeAudit(): AuditService & { records: unknown[] } {
   return service;
 }
 
+function fakeCache(): ReportsCache {
+  return { bumpGeneration: async () => undefined } as unknown as ReportsCache;
+}
+
 /** Executes the transaction callback inline, like a healthy replica set. */
 function fakeConnection(): Connection {
   const session = {
@@ -183,6 +188,7 @@ describe('AppointmentsService', () => {
       }),
       fakePatientRepo(true),
       audit,
+      fakeCache(),
       fakeConnection(),
     );
 
@@ -200,6 +206,7 @@ describe('AppointmentsService', () => {
       fakeRepo(),
       fakePatientRepo(true),
       fakeAudit(),
+      fakeCache(),
       fakeConnection(),
     );
     await expect(
@@ -212,6 +219,7 @@ describe('AppointmentsService', () => {
       fakeRepo(),
       fakePatientRepo(false),
       fakeAudit(),
+      fakeCache(),
       fakeConnection(),
     );
     await expect(service.create(context, members, actor, { ...validCreate })).rejects.toThrow(
@@ -225,6 +233,7 @@ describe('AppointmentsService', () => {
       fakeRepo({ findConflicting: async () => appointmentDoc() }),
       fakePatientRepo(true),
       audit,
+      fakeCache(),
       fakeConnection(),
     );
     await expect(service.create(context, members, actor, { ...validCreate })).rejects.toThrow(
@@ -247,6 +256,7 @@ describe('AppointmentsService', () => {
       }),
       fakePatientRepo(true),
       fakeAudit(),
+      fakeCache(),
       fakeConnection(),
     );
     await service.create(context, members, actor, { ...validCreate, notes: 'bring chart' });
@@ -258,6 +268,7 @@ describe('AppointmentsService', () => {
       fakeRepo(),
       fakePatientRepo(true),
       fakeAudit(),
+      fakeCache(),
       abortingConnection(),
     );
     await expect(service.create(context, members, actor, { ...validCreate })).rejects.toThrow(
@@ -270,6 +281,7 @@ describe('AppointmentsService', () => {
       fakeRepo(),
       fakePatientRepo(true),
       fakeAudit(),
+      fakeCache(),
       fakeConnection(),
     );
     const appointment = await service.findOne(context, 'a1');
@@ -281,6 +293,7 @@ describe('AppointmentsService', () => {
       fakeRepo({ findOne: async () => null }),
       fakePatientRepo(true),
       fakeAudit(),
+      fakeCache(),
       fakeConnection(),
     );
     await expect(service.findOne(context, 'missing')).rejects.toThrow(NotFoundException);
@@ -297,6 +310,7 @@ describe('AppointmentsService', () => {
       }),
       fakePatientRepo(true),
       fakeAudit(),
+      fakeCache(),
       fakeConnection(),
     );
     const page = await service.listPage(context, { limit: 2 });
@@ -316,6 +330,7 @@ describe('AppointmentsService', () => {
       }),
       fakePatientRepo(true),
       fakeAudit(),
+      fakeCache(),
       fakeConnection(),
     );
     await service.listPage(context, {
@@ -346,6 +361,7 @@ describe('AppointmentsService', () => {
       }),
       fakePatientRepo(true),
       fakeAudit(),
+      fakeCache(),
       fakeConnection(),
     );
     await service.listPage(context, { from: '2026-11-01T00:00:00.000Z', limit: 20 });
@@ -374,6 +390,7 @@ describe('AppointmentsService', () => {
         }),
         fakePatientRepo(true),
         audit,
+        fakeCache(),
         fakeConnection(),
       );
 
@@ -398,6 +415,7 @@ describe('AppointmentsService', () => {
         fakeRepo({ findOne: async () => appointmentDoc({ status: 'CHECKED_IN' }) }),
         fakePatientRepo(true),
         fakeAudit(),
+        fakeCache(),
         fakeConnection(),
       );
       const error = await service
@@ -417,6 +435,7 @@ describe('AppointmentsService', () => {
           fakeRepo({ findOne: async () => appointmentDoc({ status: terminal }) }),
           fakePatientRepo(true),
           fakeAudit(),
+          fakeCache(),
           fakeConnection(),
         );
         const error = await service
@@ -431,6 +450,7 @@ describe('AppointmentsService', () => {
         fakeRepo({ findOne: async () => null }),
         fakePatientRepo(true),
         fakeAudit(),
+        fakeCache(),
         fakeConnection(),
       );
       await expect(service.transition(context, actor, 'missing', 'CONFIRMED')).rejects.toThrow(
@@ -447,6 +467,7 @@ describe('AppointmentsService', () => {
         }),
         fakePatientRepo(true),
         fakeAudit(),
+        fakeCache(),
         fakeConnection(),
       );
       const error = await service
@@ -480,6 +501,7 @@ describe('AppointmentsService', () => {
         }),
         fakePatientRepo(true),
         audit,
+        fakeCache(),
         fakeConnection(),
       );
 
@@ -522,6 +544,7 @@ describe('AppointmentsService', () => {
         }),
         fakePatientRepo(true),
         fakeAudit(),
+        fakeCache(),
         fakeConnection(),
       );
       await service.reschedule(context, members, actor, 'a1', { durationMinutes: 60 });
@@ -544,6 +567,7 @@ describe('AppointmentsService', () => {
         }),
         fakePatientRepo(true),
         fakeAudit(),
+        fakeCache(),
         fakeConnection(),
       );
       await service.reschedule(context, members, actor, 'a1', { memberId: 'member-1' });
@@ -564,6 +588,7 @@ describe('AppointmentsService', () => {
           fakeRepo({ findOneInTransaction: async () => appointmentDoc({ status }) }),
           fakePatientRepo(true),
           audit,
+          fakeCache(),
           fakeConnection(),
         );
         const error = await service
@@ -580,6 +605,7 @@ describe('AppointmentsService', () => {
         fakeRepo({ findConflicting: async () => appointmentDoc() }),
         fakePatientRepo(true),
         audit,
+        fakeCache(),
         fakeConnection(),
       );
       const error = await service
@@ -594,6 +620,7 @@ describe('AppointmentsService', () => {
         fakeRepo(),
         fakePatientRepo(true),
         fakeAudit(),
+        fakeCache(),
         fakeConnection(),
       );
       await expect(
@@ -606,6 +633,7 @@ describe('AppointmentsService', () => {
         fakeRepo({ findOneInTransaction: async () => null }),
         fakePatientRepo(true),
         fakeAudit(),
+        fakeCache(),
         fakeConnection(),
       );
       await expect(
@@ -618,6 +646,7 @@ describe('AppointmentsService', () => {
         fakeRepo({ updateInTransaction: async () => null }),
         fakePatientRepo(true),
         fakeAudit(),
+        fakeCache(),
         fakeConnection(),
       );
       const error = await service
@@ -631,6 +660,7 @@ describe('AppointmentsService', () => {
         fakeRepo(),
         fakePatientRepo(true),
         fakeAudit(),
+        fakeCache(),
         abortingConnection(),
       );
       await expect(

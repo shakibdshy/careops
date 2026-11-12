@@ -34,6 +34,10 @@ describe('OpenAPI document (e2e)', () => {
     expect(paths).toContain('/api/appointments/{appointmentId}');
     expect(paths).toContain('/api/appointments/{appointmentId}/status');
     expect(paths).toContain('/api/audit-entries');
+    expect(paths).toContain('/api/reports/daily-volume');
+    expect(paths).toContain('/api/reports/status-breakdown');
+    expect(paths).toContain('/api/reports/provider-utilization');
+    expect(paths).toContain('/api/reports/today');
     expect(paths).toContain('/api/organizations/current');
     expect(paths).toContain('/api/workspace/me');
     expect(paths).toContain('/api/health');
@@ -69,5 +73,32 @@ describe('OpenAPI document (e2e)', () => {
 
   it('excludes test-only routes (RBAC probe)', () => {
     expect(Object.keys(doc.paths)).not.toContain('/api/workspace/admin-probe');
+  });
+
+  it('documents typed report responses and the bounded window query', () => {
+    const reportPaths = [
+      '/api/reports/daily-volume',
+      '/api/reports/status-breakdown',
+      '/api/reports/provider-utilization',
+      '/api/reports/today',
+    ];
+    for (const path of reportPaths) {
+      const get = doc.paths[path]!.get as {
+        responses: Record<string, { content?: Record<string, { schema: unknown }> }>;
+      };
+      expect(get.responses['200']?.content).toBeDefined();
+    }
+    // The windowed reports document a 400 for a malformed days param; today
+    // takes no query and is a plain range read.
+    for (const path of reportPaths.slice(0, 3)) {
+      const get = doc.paths[path]!.get as {
+        responses: Record<string, { content?: Record<string, { schema: unknown }> }>;
+        parameters?: Array<{ name: string; in: string }>;
+      };
+      expect(get.responses['400']?.content).toBeDefined();
+      expect(get.parameters?.some((param) => param.name === 'days' && param.in === 'query')).toBe(
+        true,
+      );
+    }
   });
 });

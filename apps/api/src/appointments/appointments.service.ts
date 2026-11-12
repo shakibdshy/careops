@@ -14,6 +14,7 @@ import { AuditService } from '../audit/audit.service.js';
 import type { OrgRequestContext } from '../data/org-scoped.repository.js';
 import type { FullOrganization } from '../auth/org-context.js';
 import { PatientRepository } from '../patients/patient.repository.js';
+import { ReportsCache } from '../reports/reports.cache.js';
 import { AppointmentRepository } from './appointment.repository.js';
 import type { AppointmentDoc } from './appointment.schema.js';
 import { ALLOWED_TRANSITIONS, isAllowedTransition, RESCHEDULABLE_STATUSES } from '@careops/shared';
@@ -23,7 +24,7 @@ export interface AppointmentActor {
   email: string;
 }
 
-function toAppointmentDto(doc: AppointmentDoc): Appointment {
+export function toAppointmentDto(doc: AppointmentDoc): Appointment {
   return {
     id: String(doc._id),
     organizationId: doc.organizationId,
@@ -86,6 +87,7 @@ export class AppointmentsService {
     private readonly appointmentRepository: AppointmentRepository,
     private readonly patientRepository: PatientRepository,
     private readonly auditService: AuditService,
+    private readonly reportsCache: ReportsCache,
     @InjectConnection()
     private readonly connection: Connection,
   ) {}
@@ -173,6 +175,7 @@ export class AppointmentsService {
       before: null,
       after: toAppointmentDto(created),
     });
+    await this.reportsCache.bumpGeneration(context.organizationId);
     return toAppointmentDto(created);
   }
 
@@ -265,6 +268,7 @@ export class AppointmentsService {
       before: toAppointmentDto(before),
       after: toAppointmentDto(after),
     });
+    await this.reportsCache.bumpGeneration(context.organizationId);
     return toAppointmentDto(after);
   }
 
@@ -360,6 +364,7 @@ export class AppointmentsService {
       before: toAppointmentDto(before),
       after: toAppointmentDto(after),
     });
+    await this.reportsCache.bumpGeneration(context.organizationId);
     return toAppointmentDto(after);
   }
 }
