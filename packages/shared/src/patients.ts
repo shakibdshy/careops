@@ -9,6 +9,7 @@ export const patientSchema = z.object({
   lastName: z.string(),
   dateOfBirth: z.string(),
   phone: z.string().optional(),
+  contactEmail: z.string().optional(),
   notes: z.string().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -26,6 +27,9 @@ export const createPatientSchema = z.object({
       message: 'must be a date in the past',
     }),
   phone: z.string().min(7).max(20).optional(),
+  // Contact Email (glossary): optional notification destination; the Patient
+  // never authenticates with it. 254 is the RFC 5321 address limit.
+  contactEmail: z.email().max(254).optional(),
   notes: z.string().max(2000).optional(),
 });
 export type CreatePatientDto = z.infer<typeof createPatientSchema>;

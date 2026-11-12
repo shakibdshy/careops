@@ -239,6 +239,67 @@ describe('Patients (e2e)', () => {
     });
   });
 
+  describe('Contact Email (optional notification destination)', () => {
+    it('is returned when provided on create and absent otherwise', async () => {
+      const withEmail = await ownerAgent
+        .post('/api/patients')
+        .send({
+          ...validPatient,
+          firstName: 'Email',
+          lastName: 'Holder',
+          contactEmail: 'holder@example.test',
+        })
+        .expect(201);
+      expect(patientSchema.parse(withEmail.body).contactEmail).toBe('holder@example.test');
+
+      const without = await ownerAgent
+        .post('/api/patients')
+        .send({ ...validPatient, firstName: 'No', lastName: 'Email' })
+        .expect(201);
+      expect(patientSchema.parse(without.body).contactEmail).toBeUndefined();
+    });
+
+    it('can be added on update', async () => {
+      const created = await ownerAgent
+        .post('/api/patients')
+        .send({ ...validPatient, firstName: 'Late', lastName: 'Contact' })
+        .expect(201);
+      const id = (created.body as { id: string }).id;
+      const res = await ownerAgent
+        .patch(`/api/patients/${id}`)
+        .send({ contactEmail: 'late.contact@example.test' })
+        .expect(200);
+      expect(patientSchema.parse(res.body).contactEmail).toBe('late.contact@example.test');
+    });
+
+    it('rejects a malformed address with a contactEmail field error', async () => {
+      const create = await ownerAgent
+        .post('/api/patients')
+        .send({ ...validPatient, contactEmail: 'not-an-email' });
+      expect(create.status).toBe(400);
+      expect(
+        errorResponseSchema
+          .parse(create.body)
+          .errors.some((error) => error.field === 'contactEmail'),
+      ).toBe(true);
+
+      const created = await ownerAgent
+        .post('/api/patients')
+        .send({ ...validPatient, firstName: 'Bad', lastName: 'Patch' })
+        .expect(201);
+      const id = (created.body as { id: string }).id;
+      const update = await ownerAgent
+        .patch(`/api/patients/${id}`)
+        .send({ contactEmail: 'not-an-email' });
+      expect(update.status).toBe(400);
+      expect(
+        errorResponseSchema
+          .parse(update.body)
+          .errors.some((error) => error.field === 'contactEmail'),
+      ).toBe(true);
+    });
+  });
+
   describe('audit browsing (owner/admin)', () => {
     it('an owner sees the audit trail newest-first with before→after', async () => {
       const res = await ownerAgent.get('/api/audit-entries?limit=100').expect(200);
@@ -248,8 +309,13 @@ describe('Patients (e2e)', () => {
       const deleted = page.items.find((entry) => entry.action === 'delete' && entry.after === null);
       expect(deleted).toBeDefined();
       expect(deleted?.before).toMatchObject({ firstName: 'Edited' });
-      // An update entry carries both states.
-      const updated = page.items.find((entry) => entry.action === 'update');
+      // An update entry carries both states (the Edit→Edited rename above;
+      // other describes may add unrelated updates, so match on the after-state).
+      const updated = page.items.find(
+        (entry) =>
+          entry.action === 'update' &&
+          (entry.after as { firstName?: string } | null)?.firstName === 'Edited',
+      );
       expect(updated?.before).toMatchObject({ firstName: 'Edit' });
       expect(updated?.after).toMatchObject({ firstName: 'Edited' });
     });
