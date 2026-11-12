@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import type { ClientSession } from 'mongoose';
+import type { ClientSession, QueryFilter, UpdateQuery } from 'mongoose';
 import { Model } from 'mongoose';
 import type { OrgRequestContext } from '../data/org-scoped.repository.js';
 import { OrgScopedRepository } from '../data/org-scoped.repository.js';
@@ -14,6 +14,8 @@ export interface BookingWindow {
   memberId: string;
   start: Date;
   end: Date;
+  /** A reschedule never conflicts with the appointment being moved. */
+  excludeId?: string | undefined;
 }
 
 @Injectable()
@@ -59,16 +61,45 @@ export class AppointmentRepository extends OrgScopedRepository<AppointmentDoc> {
     window: BookingWindow,
     session: ClientSession,
   ): Promise<AppointmentDoc | null> {
+    const filter = this.orgFilter(context, {
+      memberId: window.memberId,
+      status: SLOT_HOLDING_STATUSES,
+      start: { $lt: window.end },
+      end: { $gt: window.start },
+    });
+    if (window.excludeId) {
+      // _id is ObjectId-typed in mongoose's strict query casting; the string
+      // form is valid at runtime and cast through the raw filter record.
+      (filter as Record<string, unknown>)['_id'] = { $ne: window.excludeId };
+    }
+    return this.model.findOne(filter).session(session).exec();
+  }
+
+  /** Snapshot read inside the caller's transaction (reschedule merges partial fields). */
+  async findOneInTransaction(
+    context: OrgRequestContext,
+    filter: QueryFilter<AppointmentDoc>,
+    session: ClientSession,
+  ): Promise<AppointmentDoc | null> {
+    return this.model.findOne(this.orgFilter(context, filter)).session(session).exec();
+  }
+
+  /**
+   * Conditional update inside the caller's transaction; returnPreUpdate yields
+   * the atomic before-state for the audit capture (same seam as Patients).
+   */
+  async updateInTransaction(
+    context: OrgRequestContext,
+    filter: QueryFilter<AppointmentDoc>,
+    update: UpdateQuery<AppointmentDoc>,
+    session: ClientSession,
+    options: { returnPreUpdate?: boolean } = {},
+  ): Promise<AppointmentDoc | null> {
     return this.model
-      .findOne(
-        this.orgFilter(context, {
-          memberId: window.memberId,
-          status: SLOT_HOLDING_STATUSES,
-          start: { $lt: window.end },
-          end: { $gt: window.start },
-        }),
-      )
-      .session(session)
+      .findOneAndUpdate(this.orgFilter(context, filter), update, {
+        new: !options.returnPreUpdate,
+        session,
+      })
       .exec();
   }
 
