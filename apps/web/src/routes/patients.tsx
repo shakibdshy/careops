@@ -1,176 +1,264 @@
-import { useEffect, useState } from 'react';
-import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
-import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { createFileRoute, Link } from '@tanstack/react-router';
+import { useDbClient, useLiveInfiniteQuery } from '@tanstack/react-db';
+import { createColumnHelper, tableFeatures, useTable } from '@tanstack/react-table';
 import {
+  createPatientSchema,
   patientSchema,
-  patientsPageSchema,
-  workspaceMeSchema,
+  type Patient,
   type WorkspaceMe,
 } from '@careops/shared';
-import { apiGet, apiPost, fieldErrorsOf } from '../lib/api';
+import { ArrowLeft, UserRoundPlus, Users } from 'lucide-react';
+import { ZodForm } from '#/components/zod-form';
+import { Alert, AlertDescription } from '#/components/ui/alert';
+import { Badge } from '#/components/ui/badge';
+import { Button } from '#/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '#/components/ui/card';
+import { Skeleton } from '#/components/ui/skeleton';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '#/components/ui/table';
+import { apiPost } from '#/lib/api';
+import { PATIENTS_PAGE_SIZE, patientsCollectionOptions } from '#/lib/patients-collection';
+import { useWorkspace } from '#/lib/use-workspace';
 
 export const Route = createFileRoute('/patients')({ component: PatientsPage });
 
-function useWorkspace(): WorkspaceMe | undefined {
-  const navigate = useNavigate();
-  const [me, setMe] = useState<WorkspaceMe>();
+const features = tableFeatures({});
+const column = createColumnHelper<typeof features, Patient>();
+const columns = column.columns([
+  column.accessor('firstName', {
+    header: 'Patient',
+    cell: (info) => (
+      <Link
+        to="/patients/$patientId"
+        params={{ patientId: info.row.original.id }}
+        className="font-medium text-primary underline-offset-4 hover:underline"
+      >
+        {info.row.original.firstName} {info.row.original.lastName}
+      </Link>
+    ),
+  }),
+  column.accessor('dateOfBirth', {
+    header: 'Date of birth',
+    cell: (info) => (
+      <span className="tabular-nums text-muted-foreground">{info.getValue().slice(0, 10)}</span>
+    ),
+  }),
+  column.accessor('phone', {
+    header: 'Phone',
+    cell: (info) => info.getValue() ?? <span className="text-muted-foreground">—</span>,
+  }),
+  column.accessor('contactEmail', {
+    header: 'Contact email',
+    cell: (info) => info.getValue() ?? <span className="text-muted-foreground">—</span>,
+  }),
+]);
 
-  useEffect(() => {
-    apiGet('/api/workspace/me', workspaceMeSchema)
-      .then(setMe)
-      .catch(() => navigate({ to: '/login', search: { redirect: '/patients' } }));
-  }, [navigate]);
-
-  return me;
-}
+const EMPTY_PATIENTS: Patient[] = [];
 
 function PatientsPage() {
-  const me = useWorkspace();
-  const queryClient = useQueryClient();
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [dateOfBirth, setDateOfBirth] = useState('');
-  const [phone, setPhone] = useState('');
-  const [notes, setNotes] = useState('');
-  const [formError, setFormError] = useState<string | undefined>();
-  const [fieldErrors, setFieldErrors] = useState<Array<{ field: string; message: string }>>([]);
-
-  const patientsQuery = useInfiniteQuery({
-    queryKey: ['patients'],
-    queryFn: ({ pageParam }) =>
-      apiGet(`/api/patients${pageParam ? `?cursor=${pageParam}` : ''}`, patientsPageSchema),
-    initialPageParam: '',
-    getNextPageParam: (lastPage) => lastPage.nextCursor,
-  });
-
-  const createMutation = useMutation({
-    mutationFn: async () =>
-      apiPost('/api/patients', patientSchema, {
-        firstName,
-        lastName,
-        dateOfBirth,
-        ...(phone ? { phone } : {}),
-        ...(notes ? { notes } : {}),
-      }),
-    onSuccess: () => {
-      setFirstName('');
-      setLastName('');
-      setDateOfBirth('');
-      setFormError(undefined);
-      setFieldErrors([]);
-      void queryClient.invalidateQueries({ queryKey: ['patients'] });
-    },
-    onError: (error: Error) => {
-      setFormError(error.message);
-      setFieldErrors(fieldErrorsOf(error));
-    },
-  });
-
+  const me = useWorkspace('/patients');
   if (!me) {
-    return <div className="p-8">Loading…</div>;
+    return <div className="p-8 text-muted-foreground">Loading…</div>;
   }
+  // Mounted only after the client-side auth check, so live queries never
+  // subscribe during SSR.
+  return <PatientsWorkspace me={me} />;
+}
 
+function PatientsWorkspace({ me }: { me: WorkspaceMe }) {
+  const db = useDbClient();
+  const patients = db.collection(patientsCollectionOptions);
+  const live = useLiveInfiniteQuery(
+    (q) => q.from({ patients }).orderBy(({ patients: patient }) => patient.id, 'asc'),
+    { pageSize: PATIENTS_PAGE_SIZE },
+  );
+  const table = useTable({ features, columns, data: live.data ?? EMPTY_PATIENTS });
   const canCreate = me.organization.role === 'owner' || me.organization.role === 'admin';
 
   return (
-    <div className="p-8">
-      <h1 className="text-2xl font-bold">Patients — {me.organization.name}</h1>
-      {canCreate && (
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            void createMutation.mutateAsync().catch(() => undefined);
-          }}
-          className="mt-6 flex flex-wrap items-end gap-3"
-        >
-          <input
-            placeholder="First name"
-            value={firstName}
-            onChange={(e) => setFirstName(e.target.value)}
-            className="rounded border p-2"
-            data-testid="patient-first-name"
-          />
-          <input
-            placeholder="Last name"
-            value={lastName}
-            onChange={(e) => setLastName(e.target.value)}
-            className="rounded border p-2"
-            data-testid="patient-last-name"
-          />
-          <input
-            type="date"
-            value={dateOfBirth}
-            onChange={(e) => setDateOfBirth(e.target.value)}
-            className="rounded border p-2"
-            data-testid="patient-date-of-birth"
-          />
-          <input
-            placeholder="Phone (optional)"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            className="rounded border p-2"
-            data-testid="patient-phone"
-          />
-          <input
-            placeholder="Notes (optional)"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            className="rounded border p-2"
-            data-testid="patient-notes"
-          />
-          <button
-            type="submit"
-            disabled={createMutation.isPending}
-            className="rounded bg-black p-2 text-white disabled:opacity-50"
-            data-testid="create-patient"
+    <div className="mx-auto max-w-6xl p-6 lg:p-8">
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <Link
+            to="/workspace"
+            className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
           >
-            Add patient
-          </button>
-        </form>
-      )}
-      {formError && <p className="mt-3 text-red-600">{formError}</p>}
-      {fieldErrors.length > 0 && (
-        <ul className="mt-2 text-red-600" data-testid="patient-field-errors">
-          {fieldErrors.map((error) => (
-            <li key={error.field}>
-              {error.field}: {error.message}
-            </li>
-          ))}
-        </ul>
-      )}
-      {patientsQuery.isLoading && <p className="mt-6">Loading patients…</p>}
-      {patientsQuery.isError && (
-        <p className="mt-6 text-red-600">{String(patientsQuery.error.message)}</p>
-      )}
-      {patientsQuery.data && (
-        <ul className="mt-6 divide-y" data-testid="patients-list">
-          {patientsQuery.data.pages.flatMap((page) =>
-            page.items.map((patient) => (
-              <li key={patient.id} className="py-2" data-testid="patient-row">
-                <Link
-                  to="/patients/$patientId"
-                  params={{ patientId: patient.id }}
-                  className="font-medium underline"
-                >
-                  {patient.firstName} {patient.lastName}
-                </Link>{' '}
-                <span className="text-gray-600">born {patient.dateOfBirth.slice(0, 10)}</span>
-              </li>
-            )),
+            <ArrowLeft className="size-3.5" /> Workspace
+          </Link>
+          <p className="mt-3 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+            {me.organization.name}
+          </p>
+          <h1 className="mt-1 text-3xl font-bold tracking-tight">Patients</h1>
+        </div>
+        <Badge variant="secondary" className="gap-1.5 px-3 py-1">
+          <Users className="size-3.5" />
+          {live.data.length} {live.data.length === 1 ? 'record' : 'records'}
+        </Badge>
+      </header>
+
+      <div
+        className={`mt-6 grid items-start gap-6 ${
+          canCreate ? 'lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]' : ''
+        }`}
+      >
+        {canCreate && (
+          <Card className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <UserRoundPlus className="size-4 text-primary" /> New patient
+              </CardTitle>
+              <CardDescription>
+                Added to this organization only. Names and date of birth are required.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ZodForm
+                schema={createPatientSchema}
+                defaultValues={{
+                  firstName: '',
+                  lastName: '',
+                  dateOfBirth: '',
+                  phone: undefined,
+                  contactEmail: undefined,
+                  notes: undefined,
+                }}
+                fields={[
+                  {
+                    name: 'firstName',
+                    label: 'First name',
+                    testId: 'patient-first-name',
+                    autoComplete: 'given-name',
+                  },
+                  {
+                    name: 'lastName',
+                    label: 'Last name',
+                    testId: 'patient-last-name',
+                    autoComplete: 'family-name',
+                  },
+                  {
+                    name: 'dateOfBirth',
+                    label: 'Date of birth',
+                    type: 'date',
+                    testId: 'patient-date-of-birth',
+                    autoComplete: 'bday',
+                  },
+                  {
+                    name: 'phone',
+                    label: 'Phone',
+                    optional: true,
+                    testId: 'patient-phone',
+                    autoComplete: 'tel',
+                  },
+                  {
+                    name: 'contactEmail',
+                    label: 'Contact email',
+                    type: 'email',
+                    optional: true,
+                    testId: 'patient-contact-email',
+                    autoComplete: 'email',
+                  },
+                  {
+                    name: 'notes',
+                    label: 'Notes',
+                    type: 'textarea',
+                    optional: true,
+                    testId: 'patient-notes',
+                  },
+                ]}
+                submitLabel="Add patient"
+                submitTestId="create-patient"
+                resetOnSuccess
+                onSubmit={async (values) => {
+                  const created = await apiPost('/api/patients', patientSchema, values);
+                  await patients.utils.writeUpsert(created);
+                }}
+              />
+            </CardContent>
+          </Card>
+        )}
+
+        <Card className="animate-in fade-in slide-in-from-bottom-2 overflow-hidden duration-300">
+          <Table data-testid="patients-list">
+            <TableHeader>
+              {table.getHeaderGroups().map((headerGroup) => (
+                <TableRow key={headerGroup.id} className="bg-muted/50 hover:bg-muted/50">
+                  {headerGroup.headers.map((header) => (
+                    <TableHead key={header.id}>
+                      {header.isPlaceholder ? null : <table.FlexRender header={header} />}
+                    </TableHead>
+                  ))}
+                </TableRow>
+              ))}
+            </TableHeader>
+            <TableBody>
+              {live.isLoading &&
+                Array.from({ length: 4 }, (_, index) => (
+                  <TableRow key={`skeleton-${index}`}>
+                    {columns.map((_, cellIndex) => (
+                      <TableCell key={cellIndex}>
+                        <Skeleton className="h-4 w-full max-w-40" />
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))}
+              {!live.isLoading &&
+                table.getRowModel().rows.map((row) => (
+                  <TableRow
+                    key={row.id}
+                    data-testid="patient-row"
+                    className="transition-colors hover:bg-accent/40"
+                  >
+                    {row.getAllCells().map((cell) => (
+                      <TableCell key={cell.id}>
+                        <table.FlexRender cell={cell} />
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))}
+              {!live.isLoading && table.getRowModel().rows.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={columns.length} className="h-24 text-center">
+                    <span className="text-muted-foreground">
+                      No patients yet{canCreate ? ' — add the first one.' : '.'}
+                    </span>
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+          {live.isLoadingError && (
+            <div className="p-4">
+              <Alert variant="destructive">
+                <AlertDescription>Could not load patients. Refresh to try again.</AlertDescription>
+              </Alert>
+            </div>
           )}
-        </ul>
-      )}
-      {patientsQuery.hasNextPage && (
-        <button
-          onClick={() => {
-            void patientsQuery.fetchNextPage();
-          }}
-          className="mt-4 rounded border p-2"
-          data-testid="load-more"
-        >
-          Load more
-        </button>
-      )}
+          <div className="flex items-center justify-between border-t px-4 py-3">
+            <p className="text-xs text-muted-foreground">
+              {live.hasNextPage ? 'More records available' : 'End of list'}
+            </p>
+            {live.hasNextPage && (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={live.isFetchingNextPage}
+                data-testid="load-more"
+                onClick={() => {
+                  void live.fetchNextPage();
+                }}
+              >
+                {live.isFetchingNextPage ? 'Loading…' : 'Load more'}
+              </Button>
+            )}
+          </div>
+        </Card>
+      </div>
     </div>
   );
 }

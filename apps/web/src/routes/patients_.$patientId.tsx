@@ -1,187 +1,220 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
-import { patientSchema, workspaceMeSchema, type Patient, type WorkspaceMe } from '@careops/shared';
-import { apiDelete, apiGet, apiPatch, fieldErrorsOf } from '../lib/api';
+import { eq } from '@tanstack/db';
+import { useDbClient, useLiveQuery } from '@tanstack/react-db';
+import { updatePatientSchema, type WorkspaceMe } from '@careops/shared';
+import { ArrowLeft, CalendarDays, Trash2 } from 'lucide-react';
+import { ZodForm } from '#/components/zod-form';
+import { Alert, AlertDescription } from '#/components/ui/alert';
+import { Badge } from '#/components/ui/badge';
+import { Button } from '#/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '#/components/ui/card';
+import { patientsCollectionOptions } from '#/lib/patients-collection';
+import { useWorkspace } from '#/lib/use-workspace';
 
 export const Route = createFileRoute('/patients_/$patientId')({
   component: PatientDetailPage,
 });
 
-type DetailState =
-  | { kind: 'loading' }
-  | { kind: 'ready'; patient: Patient }
-  | { kind: 'missing' }
-  | { kind: 'error'; message: string };
-
 function PatientDetailPage() {
   const { patientId } = Route.useParams();
-  const navigate = useNavigate();
-  const [me, setMe] = useState<WorkspaceMe>();
-  const [state, setState] = useState<DetailState>({ kind: 'loading' });
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [dateOfBirth, setDateOfBirth] = useState('');
-  const [phone, setPhone] = useState('');
-  const [notes, setNotes] = useState('');
-  const [formError, setFormError] = useState<string | undefined>();
-  const [fieldErrors, setFieldErrors] = useState<Array<{ field: string; message: string }>>([]);
-
-  useEffect(() => {
-    apiGet('/api/workspace/me', workspaceMeSchema)
-      .then(setMe)
-      .catch(() => navigate({ to: '/login', search: { redirect: `/patients/${patientId}` } }));
-  }, [navigate, patientId]);
-
-  useEffect(() => {
-    if (!me) return;
-    apiGet(`/api/patients/${patientId}`, patientSchema)
-      .then((patient) => {
-        setState({ kind: 'ready', patient });
-        setFirstName(patient.firstName);
-        setLastName(patient.lastName);
-        setDateOfBirth(patient.dateOfBirth.slice(0, 10));
-        setPhone(patient.phone ?? '');
-        setNotes(patient.notes ?? '');
-      })
-      .catch(() => setState({ kind: 'missing' }));
-  }, [me, patientId]);
-
-  async function onSave(e: React.FormEvent) {
-    e.preventDefault();
-    setFormError(undefined);
-    setFieldErrors([]);
-    try {
-      const updated = await apiPatch(`/api/patients/${patientId}`, patientSchema, {
-        firstName,
-        lastName,
-        dateOfBirth,
-        ...(phone ? { phone } : {}),
-        ...(notes ? { notes } : {}),
-      });
-      setState({ kind: 'ready', patient: updated });
-      setFormError(undefined);
-    } catch (error) {
-      setFormError((error as Error).message);
-      setFieldErrors(fieldErrorsOf(error));
-    }
+  const me = useWorkspace(`/patients/${patientId}`);
+  if (!me) {
+    return <div className="p-8 text-muted-foreground">Loading…</div>;
   }
+  // Mounted only after the client-side auth check, so live queries never
+  // subscribe during SSR.
+  return <PatientDetail me={me} patientId={patientId} />;
+}
+
+function PatientDetail({ me, patientId }: { me: WorkspaceMe; patientId: string }) {
+  const navigate = useNavigate();
+  const db = useDbClient();
+  const patients = db.collection(patientsCollectionOptions);
+  const { data: patient, isLoading } = useLiveQuery({
+    query: (q) =>
+      q
+        .from({ patients })
+        .where(({ patients: row }) => eq(row.id, patientId))
+        .findOne(),
+  });
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | undefined>();
+
+  const canEdit = me.organization.role === 'owner' || me.organization.role === 'admin';
 
   async function onDelete() {
     if (!window.confirm('Delete this patient? The audit trail retains the record.')) {
       return;
     }
+    setDeleting(true);
+    setDeleteError(undefined);
     try {
-      await apiDelete(`/api/patients/${patientId}`);
+      const tx = patients.delete(patientId);
+      await tx.when('settled');
       await navigate({ to: '/patients' });
     } catch (error) {
-      setFormError((error as Error).message);
+      setDeleting(false);
+      setDeleteError(error instanceof Error ? error.message : 'Could not delete the patient');
     }
   }
 
-  if (!me) {
-    return <div className="p-8">Loading…</div>;
+  if (isLoading || deleting) {
+    return <div className="p-8 text-muted-foreground">Loading…</div>;
+  }
+  if (!patient) {
+    return (
+      <div className="mx-auto max-w-3xl p-6 lg:p-8">
+        <Link
+          to="/patients"
+          className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <ArrowLeft className="size-3.5" /> Patients
+        </Link>
+        <p className="mt-6 text-destructive">Patient not found.</p>
+      </div>
+    );
   }
 
-  const canEdit = me.organization.role === 'owner' || me.organization.role === 'admin';
-
   return (
-    <div className="p-8">
-      <Link to="/patients" className="underline">
-        ← Patients
+    <div className="mx-auto max-w-3xl p-6 lg:p-8">
+      <Link
+        to="/patients"
+        className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <ArrowLeft className="size-3.5" /> Patients
       </Link>
-      <h1 className="mt-4 text-2xl font-bold">Patient</h1>
-      {state.kind === 'loading' && <p className="mt-4">Loading…</p>}
-      {state.kind === 'missing' && <p className="mt-4 text-red-600">Patient not found.</p>}
-      {state.kind === 'ready' && (
-        <>
-          <p className="mt-2 text-gray-600">Record id: {state.patient.id}</p>
+
+      <header className="mt-4">
+        <h1 className="text-3xl font-bold tracking-tight" data-testid="patient-name">
+          {patient.firstName} {patient.lastName}
+        </h1>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <Badge variant="secondary" className="gap-1.5">
+            <CalendarDays className="size-3.5" />
+            Born {patient.dateOfBirth.slice(0, 10)}
+          </Badge>
+          <span className="text-xs text-muted-foreground">Record id: {patient.id}</span>
+        </div>
+      </header>
+
+      <Card className="mt-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+        <CardHeader>
+          <CardTitle className="text-base">Patient record</CardTitle>
+          <CardDescription>
+            {canEdit
+              ? 'Changes apply immediately and are written to the audit trail.'
+              : 'Read-only — your role cannot edit patient records.'}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
           {canEdit ? (
-            <form
-              onSubmit={(e) => {
-                void onSave(e);
+            <ZodForm
+              schema={updatePatientSchema}
+              defaultValues={{
+                firstName: patient.firstName,
+                lastName: patient.lastName,
+                dateOfBirth: patient.dateOfBirth.slice(0, 10),
+                phone: patient.phone,
+                contactEmail: patient.contactEmail,
+                notes: patient.notes,
               }}
-              className="mt-6 flex max-w-md flex-col gap-3"
-            >
-              <input
-                placeholder="First name"
-                value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
-                className="rounded border p-2"
-                data-testid="edit-first-name"
-              />
-              <input
-                placeholder="Last name"
-                value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
-                className="rounded border p-2"
-                data-testid="edit-last-name"
-              />
-              <input
-                type="date"
-                value={dateOfBirth}
-                onChange={(e) => setDateOfBirth(e.target.value)}
-                className="rounded border p-2"
-                data-testid="edit-date-of-birth"
-              />
-              <input
-                placeholder="Phone"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                className="rounded border p-2"
-                data-testid="edit-phone"
-              />
-              <textarea
-                placeholder="Notes"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                className="rounded border p-2"
-                data-testid="edit-notes"
-              />
-              {formError && <p className="text-red-600">{formError}</p>}
-              {fieldErrors.length > 0 && (
-                <ul className="text-red-600">
-                  {fieldErrors.map((error) => (
-                    <li key={error.field}>
-                      {error.field}: {error.message}
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <div className="flex gap-3">
-                <button
-                  type="submit"
-                  className="rounded bg-black p-2 text-white"
-                  data-testid="save-patient"
-                >
-                  Save
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    void onDelete();
-                  }}
-                  className="rounded border border-red-600 p-2 text-red-600"
-                  data-testid="delete-patient"
-                >
-                  Delete
-                </button>
-              </div>
-            </form>
+              fields={[
+                { name: 'firstName', label: 'First name', testId: 'edit-first-name' },
+                { name: 'lastName', label: 'Last name', testId: 'edit-last-name' },
+                {
+                  name: 'dateOfBirth',
+                  label: 'Date of birth',
+                  type: 'date',
+                  testId: 'edit-date-of-birth',
+                },
+                { name: 'phone', label: 'Phone', optional: true, testId: 'edit-phone' },
+                {
+                  name: 'contactEmail',
+                  label: 'Contact email',
+                  type: 'email',
+                  optional: true,
+                  testId: 'edit-contact-email',
+                },
+                {
+                  name: 'notes',
+                  label: 'Notes',
+                  type: 'textarea',
+                  optional: true,
+                  testId: 'edit-notes',
+                },
+              ]}
+              submitLabel="Save"
+              submitTestId="save-patient"
+              onSubmit={async (values) => {
+                // Optimistic: the live row (and header) update before the API
+                // answers; a 4xx rolls the transaction back and throws the
+                // server reason into ZodForm's field errors.
+                const tx = patients.update(patientId, (draft) => {
+                  Object.assign(draft, values);
+                });
+                await tx.when('settled');
+              }}
+            />
           ) : (
-            <dl className="mt-4">
-              <dt>First name</dt>
-              <dd>{state.patient.firstName}</dd>
-              <dt>Last name</dt>
-              <dd>{state.patient.lastName}</dd>
-              <dt>Date of birth</dt>
-              <dd>{state.patient.dateOfBirth.slice(0, 10)}</dd>
-              <dt>Phone</dt>
-              <dd>{state.patient.phone ?? '—'}</dd>
-              <dt>Notes</dt>
-              <dd>{state.patient.notes ?? '—'}</dd>
+            <dl className="grid gap-3 text-sm">
+              <div className="grid grid-cols-[10rem_1fr] gap-2">
+                <dt className="text-muted-foreground">First name</dt>
+                <dd>{patient.firstName}</dd>
+              </div>
+              <div className="grid grid-cols-[10rem_1fr] gap-2">
+                <dt className="text-muted-foreground">Last name</dt>
+                <dd>{patient.lastName}</dd>
+              </div>
+              <div className="grid grid-cols-[10rem_1fr] gap-2">
+                <dt className="text-muted-foreground">Date of birth</dt>
+                <dd className="tabular-nums">{patient.dateOfBirth.slice(0, 10)}</dd>
+              </div>
+              <div className="grid grid-cols-[10rem_1fr] gap-2">
+                <dt className="text-muted-foreground">Phone</dt>
+                <dd>{patient.phone ?? '—'}</dd>
+              </div>
+              <div className="grid grid-cols-[10rem_1fr] gap-2">
+                <dt className="text-muted-foreground">Contact email</dt>
+                <dd>{patient.contactEmail ?? '—'}</dd>
+              </div>
+              <div className="grid grid-cols-[10rem_1fr] gap-2">
+                <dt className="text-muted-foreground">Notes</dt>
+                <dd>{patient.notes ?? '—'}</dd>
+              </div>
             </dl>
           )}
-        </>
+        </CardContent>
+      </Card>
+
+      {canEdit && (
+        <Card className="mt-6 border-destructive/30">
+          <CardHeader>
+            <CardTitle className="text-base text-destructive">Danger zone</CardTitle>
+            <CardDescription>
+              Deleting removes the record from the list. The audit trail retains it.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3">
+            {deleteError && (
+              <Alert variant="destructive" data-testid="delete-error">
+                <AlertDescription>{deleteError}</AlertDescription>
+              </Alert>
+            )}
+            <div>
+              <Button
+                type="button"
+                variant="destructive"
+                data-testid="delete-patient"
+                onClick={() => {
+                  void onDelete();
+                }}
+              >
+                <Trash2 className="size-4" /> Delete patient
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

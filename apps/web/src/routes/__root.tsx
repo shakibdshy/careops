@@ -1,4 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { DbClient } from '@tanstack/db';
+import { DbProvider } from '@tanstack/react-db';
 import { HeadContent, Scripts, createRootRoute } from '@tanstack/react-router';
 import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools';
 import { TanStackDevtools } from '@tanstack/react-devtools';
@@ -42,6 +44,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         },
       }),
   );
+  const [dbClient] = useState(() => new DbClient({ queryClient }));
 
   return (
     <html lang="en">
@@ -49,7 +52,9 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         <HeadContent />
       </head>
       <body>
-        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+        <QueryClientProvider client={queryClient}>
+          <DbProvider client={dbClient}>{children}</DbProvider>
+        </QueryClientProvider>
         <TanStackDevtools
           config={{
             position: 'bottom-right',
