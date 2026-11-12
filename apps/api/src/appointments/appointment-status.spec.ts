@@ -1,5 +1,9 @@
-import { appointmentStatusSchema, type AppointmentStatus } from '@careops/shared';
-import { ALLOWED_TRANSITIONS, isAllowedTransition } from './appointment-status.js';
+import {
+  ALLOWED_TRANSITIONS,
+  appointmentStatusSchema,
+  isAllowedTransition,
+  type AppointmentStatus,
+} from '@careops/shared';
 
 // The ticket's transition table, transcribed independently of the implementation.
 const EXPECTED: Record<AppointmentStatus, readonly AppointmentStatus[]> = {

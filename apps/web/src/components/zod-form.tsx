@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { useForm, type DeepKeys } from '@tanstack/react-form';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { Alert, AlertDescription } from '#/components/ui/alert';
@@ -7,16 +8,29 @@ import { Label } from '#/components/ui/label';
 import { Textarea } from '#/components/ui/textarea';
 import { fieldErrorsOf } from '#/lib/api';
 
+/** The bound control handed to a custom field renderer (pickers, UTC datetime). */
+export type ZodFormControl = {
+  value: string;
+  onChange: (next: string) => void;
+  onBlur: () => void;
+  invalid: boolean;
+  errorId: string;
+  name: string;
+  testId?: string | undefined;
+};
+
 /** One rendered field. `name` must be a top-level key of the schema's input. */
 export type ZodFormField<TValues> = {
   name: keyof TValues & string;
   label: string;
-  type?: 'text' | 'date' | 'email' | 'textarea';
+  type?: 'text' | 'date' | 'email' | 'textarea' | 'number';
   placeholder?: string;
   /** Empty input becomes `undefined` so optional contract fields stay absent. */
   optional?: boolean;
   testId?: string;
   autoComplete?: string;
+  /** Replace the default input with a custom control bound to the same field. */
+  render?: (control: ZodFormControl) => ReactNode;
 };
 
 export type ZodFormProps<TSchema extends StandardSchemaV1> = {
@@ -101,12 +115,32 @@ export function ZodForm<TSchema extends StandardSchemaV1>({
       {fields.map((config) => (
         <form.Field key={config.name} name={config.name}>
           {(field) => {
-            const value = (field.state.value ?? '') as string;
+            const value = String(field.state.value ?? '');
             const errors = field.state.meta.errors
               .map(errorMessage)
               .filter((message): message is string => Boolean(message));
             const invalid = errors.length > 0;
             const errorId = `${config.name}-error`;
+            const handleChange = (next: string) => {
+              const normalized =
+                config.type === 'number'
+                  ? next === ''
+                    ? undefined
+                    : Number(next)
+                  : config.optional && next === ''
+                    ? undefined
+                    : next;
+              field.handleChange(normalized as typeof field.state.value);
+            };
+            const control: ZodFormControl = {
+              value,
+              onChange: handleChange,
+              onBlur: field.handleBlur,
+              invalid,
+              errorId,
+              name: config.name,
+              testId: config.testId,
+            };
             const shared = {
               id: config.name,
               name: config.name,
@@ -118,10 +152,6 @@ export function ZodForm<TSchema extends StandardSchemaV1>({
               'aria-describedby': invalid ? errorId : undefined,
               onBlur: field.handleBlur,
             };
-            const handleChange = (next: string) => {
-              const normalized = config.optional && next === '' ? undefined : next;
-              field.handleChange(normalized as typeof field.state.value);
-            };
             return (
               <div className="grid gap-1.5">
                 <Label htmlFor={config.name}>
@@ -130,7 +160,9 @@ export function ZodForm<TSchema extends StandardSchemaV1>({
                     <span className="font-normal text-muted-foreground"> (optional)</span>
                   )}
                 </Label>
-                {config.type === 'textarea' ? (
+                {config.render ? (
+                  config.render(control)
+                ) : config.type === 'textarea' ? (
                   <Textarea {...shared} rows={3} onChange={(e) => handleChange(e.target.value)} />
                 ) : (
                   <Input

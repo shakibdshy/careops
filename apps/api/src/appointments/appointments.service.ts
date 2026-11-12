@@ -16,11 +16,7 @@ import type { FullOrganization } from '../auth/org-context.js';
 import { PatientRepository } from '../patients/patient.repository.js';
 import { AppointmentRepository } from './appointment.repository.js';
 import type { AppointmentDoc } from './appointment.schema.js';
-import {
-  ALLOWED_TRANSITIONS,
-  isAllowedTransition,
-  RESCHEDULABLE_STATUSES,
-} from './appointment-status.js';
+import { ALLOWED_TRANSITIONS, isAllowedTransition, RESCHEDULABLE_STATUSES } from '@careops/shared';
 
 export interface AppointmentActor {
   id: string;
