@@ -1,6 +1,6 @@
 import request from 'supertest';
 import { Test } from '@nestjs/testing';
-import { MongoMemoryServer } from 'mongodb-memory-server';
+import type { MongoMemoryReplSet } from 'mongodb-memory-server';
 import { getConnectionToken } from '@nestjs/mongoose';
 import type { Connection } from 'mongoose';
 import type { INestApplication } from '@nestjs/common';
@@ -14,6 +14,7 @@ import {
 } from '@careops/shared';
 import { AppModule } from '../src/app.module.js';
 import { bootstrapApi } from '../src/bootstrap-api.js';
+import { createTestMongo } from './mongo.js';
 
 const OWNER = {
   name: 'Owner A',
@@ -41,13 +42,13 @@ const validPatient = {
 
 describe('Patients (e2e)', () => {
   let app: INestApplication<App>;
-  let mongo: MongoMemoryServer;
+  let mongo: MongoMemoryReplSet;
   let ownerAgent: ReturnType<typeof request.agent>;
   let memberAgent: ReturnType<typeof request.agent>;
   let strangerAgent: ReturnType<typeof request.agent>;
 
   beforeAll(async () => {
-    mongo = await MongoMemoryServer.create();
+    mongo = await createTestMongo();
     process.env.MONGODB_URI = mongo.getUri('careops-patients-test');
 
     const moduleFixture: TestingModule = await Test.createTestingModule({

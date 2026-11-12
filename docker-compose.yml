@@ -1,15 +1,42 @@
 services:
   mongo:
     image: mongo:8
+    # Single-node replica set: transactions (e.g. the appointments booking
+    # conflict check) require one, and the e2e harness mirrors this topology.
+    command: ['mongod', '--replSet', 'rs0', '--bind_ip_all']
     ports:
       - '27017:27017'
     volumes:
       - mongo-data:/data/db
     healthcheck:
-      test: ['CMD', 'mongosh', '--quiet', '--eval', "db.adminCommand('ping').ok"]
+      # Unhealthy until the set is initiated (see mongo-init) — a bare ping
+      # would pass on an unconfigured member that cannot run transactions.
+      test: ['CMD', 'mongosh', '--quiet', '--eval', 'db.hello().isWritablePrimary']
       interval: 2s
       timeout: 3s
-      retries: 15
+      retries: 30
+
+  mongo-init:
+    image: mongo:8
+    depends_on:
+      - mongo
+    restart: 'no'
+    entrypoint:
+      - bash
+      - -c
+      - |
+        for i in $$(seq 1 30); do
+          mongosh --host mongo --quiet --eval 'db.hello()' >/dev/null 2>&1 && break
+          sleep 1
+        done
+        mongosh --host mongo --quiet --eval '
+          const h = db.hello();
+          if (!h.setName) {
+            rs.initiate({ _id: "rs0", members: [{ _id: 0, host: "localhost:27017" }] });
+            print("initiated rs0");
+          } else {
+            print("replica set already present: " + h.setName);
+          }'
 
   redis:
     image: redis:8-alpine
