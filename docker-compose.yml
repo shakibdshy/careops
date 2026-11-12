@@ -1,20 +1,53 @@
 services:
   mongo:
     image: mongo:8
+    # Single-node replica set: transactions (e.g. the appointment conflict
+    # check) require one, and the e2e harness mirrors this topology.
+    command: ['mongod', '--replSet', 'rs0', '--bind_ip_all']
+    # Loopback only: --bind_ip_all is required so mongo-init (another
+    # container) can reach the member over the compose network, and service
+    # traffic never uses the published port — so pin it to localhost.
     ports:
-      - '27017:27017'
+      - '127.0.0.1:27017:27017'
     volumes:
       - mongo-data:/data/db
     healthcheck:
-      test: ['CMD', 'mongosh', '--quiet', '--eval', "db.adminCommand('ping').ok"]
+      # Unhealthy until the set is initiated (see mongo-init). mongosh --eval
+      # exits 0 for ANY evaluated expression — even `false` — so the check
+      # must quit(1) explicitly on a non-writable member (a bare ping would
+      # pass on an unconfigured member that cannot run transactions).
+      test:
+        ['CMD', 'mongosh', '--quiet', '--eval', 'if (!db.hello().isWritablePrimary) { quit(1) }']
       interval: 2s
       timeout: 3s
-      retries: 15
+      retries: 30
+
+  mongo-init:
+    image: mongo:8
+    depends_on:
+      - mongo
+    restart: 'no'
+    entrypoint:
+      - bash
+      - -c
+      - |
+        for i in $$(seq 1 30); do
+          mongosh --host mongo --quiet --eval 'db.hello()' >/dev/null 2>&1 && break
+          sleep 1
+        done
+        mongosh --host mongo --quiet --eval '
+          const h = db.hello();
+          if (!h.setName) {
+            rs.initiate({ _id: "rs0", members: [{ _id: 0, host: "localhost:27017" }] });
+            print("initiated rs0");
+          } else {
+            print("replica set already present: " + h.setName);
+          }'
 
   redis:
     image: redis:8-alpine
     ports:
-      - '6379:6379'
+      - '127.0.0.1:6379:6379'
     volumes:
       - redis-data:/data
     healthcheck:

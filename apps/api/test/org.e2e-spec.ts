@@ -1,8 +1,6 @@
 import request from 'supertest';
-import { Test } from '@nestjs/testing';
-import { MongoMemoryServer } from 'mongodb-memory-server';
+import type { MongoMemoryReplSet } from 'mongodb-memory-server';
 import type { INestApplication } from '@nestjs/common';
-import type { TestingModule } from '@nestjs/testing';
 import type { App } from 'supertest/types.js';
 import {
   errorResponseSchema,
@@ -10,8 +8,7 @@ import {
   invitationSchema,
   workspaceMeSchema,
 } from '@careops/shared';
-import { AppModule } from '../src/app.module.js';
-import { bootstrapApi } from '../src/bootstrap-api.js';
+import { setupE2eApp } from './mongo.js';
 
 function userOf(email: string) {
   return { name: email.split('@')[0] ?? 'User', email, password: 'correct-horse-battery-staple' };
@@ -22,21 +19,12 @@ const invitee = userOf('invitee@example.test');
 
 describe('Organizations + RBAC (e2e)', () => {
   let app: INestApplication<App>;
-  let mongo: MongoMemoryServer;
+  let mongo: MongoMemoryReplSet;
   let ownerAgent: ReturnType<typeof request.agent>;
   let inviteeAgent: ReturnType<typeof request.agent>;
 
   beforeAll(async () => {
-    mongo = await MongoMemoryServer.create();
-    process.env.MONGODB_URI = mongo.getUri('careops-org-test');
-
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-
-    app = moduleFixture.createNestApplication({ bodyParser: false });
-    bootstrapApi(app);
-    await app.init();
+    ({ app, mongo } = await setupE2eApp('careops-org-test'));
     ownerAgent = request.agent(app.getHttpServer());
     inviteeAgent = request.agent(app.getHttpServer());
 

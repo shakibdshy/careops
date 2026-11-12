@@ -1,6 +1,6 @@
 # CareOps
 
-Back-office operations for care organizations: an organization's staff manage patient
+Back-office operations for care organizations: an organization's Members manage Patient
 records and coordinate care work. CareOps is multi-tenant — one deployment serves many
 independent organizations whose data never crosses boundaries.
 
@@ -31,3 +31,38 @@ _Avoid_: Client, Resident
 An immutable who/what/when/before→after record of a mutation to care data. Audit
 Entries are append-only and never edited or deleted.
 _Avoid_: History, Activity, Log line
+
+**Appointment**:
+A scheduled block of a Provider's time for one Patient, with a start time and a
+duration. It moves through a clinic lifecycle — scheduled, confirmed, checked in, in
+progress, completed — or ends cancelled or as a No-Show.
+_Avoid_: Booking, Visit, Session
+
+**Provider**:
+The Member assigned to deliver a specific Appointment. Not a separate kind of User —
+every Provider is a Member of the Organization.
+_Avoid_: Staff, Caregiver, Clinician
+
+**Check-In**:
+The recording that a Patient has arrived for an Appointment.
+_Avoid_: Arrival, Admission
+
+**No-Show**:
+A terminal Appointment outcome recorded by staff when the Patient fails to arrive;
+never inferred automatically.
+_Avoid_: Absence, Missed appointment
+
+**Reschedule**:
+Changing an upcoming Appointment's start time, duration, or Provider; subject to the
+same conflict rules as a new Appointment.
+_Avoid_: Move, Rebook
+
+**Conflict**:
+An overlap in time between two Appointments of the same Provider. New and rescheduled
+Appointments that would create one are rejected, not warned about.
+_Avoid_: Double-booking, Collision
+
+**Contact Email**:
+An optional email address on a Patient used to deliver notifications; the Patient
+never authenticates with it.
+_Avoid_: Email, Username
