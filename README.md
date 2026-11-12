@@ -21,6 +21,7 @@ portfolio-grade, production-shaped week-1 foundation.
 | Database | MongoDB 8 (Mongoose for domain, BetterAuth's native adapter for auth)                         |
 | Auth     | BetterAuth — email + password, httpOnly cookie sessions, organization plugin (tenancy + RBAC) |
 | Queue    | Redis + BullMQ (queued side effects with retries + idempotency keys)                          |
+| Mail     | nodemailer SMTP → Mailpit (self-contained sink + web UI, zero external keys)                  |
 | Contract | Zod-first: schemas in `packages/shared` drive API validation, Swagger, and web typing         |
 | Docs     | Swagger UI at **[/api/docs](http://localhost:3001/api/docs)**                                 |
 
@@ -34,11 +35,13 @@ bun run boot
 ```
 
 Ensures `apps/api/.env` (from the documented [.env.example](.env.example)),
-starts MongoDB + Redis via docker compose (waits for health), seeds a demo
-organization with three role accounts and patients, then launches API + web
+starts MongoDB + Redis + Mailpit via docker compose (waits for health), seeds a
+demo organization with three role accounts and patients, then launches API + web
 with hot reload.
 
 - Web: **http://localhost:3000** — Swagger: **http://localhost:3001/api/docs**
+- Mailpit (email): **http://localhost:8025** — every notification the stack sends
+  (booking confirmations, reminders, patient-created) lands here; SMTP is :1025.
 - Demo credentials (password `careops-demo-1`):
   - Owner — `owner@demo.careops`
   - Admin — `admin@demo.careops`
@@ -50,8 +53,8 @@ with hot reload.
 apps/
   api/    NestJS — auth (BetterAuth mount), organizations, patients,
           appointments (transactional booking), audit, notifications
-          (BullMQ), health; org-scoped repository base enforces tenant
-          isolation at compile time
+          (BullMQ + SMTP/Mailpit), health; org-scoped repository base enforces
+          tenant isolation at compile time
   web/    TanStack Start — login/signup, workspace (org + invites),
           patients CRUD, audit browsing
 packages/
@@ -73,6 +76,13 @@ docs/
   [ADR-0007](docs/adr/0007-db-backed-cookie-sessions-over-jwt.md).
 - **Pagination**: cursor-based everywhere —
   [ADR-0008](docs/adr/0008-cursor-pagination.md).
+- **Notifications**: queued delivery (BullMQ) over SMTP to Mailpit. Each event
+  claims a durable receipt with a unique `{organizationId, type, refId}` index —
+  storage-side dedup that survives BullMQ's pruned job ids. The recipient is
+  resolved from the Patient's Contact Email at consume time; no email → a
+  `SKIPPED` receipt, never a silent drop. Reminders are delayed jobs at
+  start − 24h that cancel themselves when the Appointment is cancelled or moved
+  past the reminder time.
 
 ## Testing
 

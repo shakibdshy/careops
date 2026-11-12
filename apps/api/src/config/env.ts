@@ -8,6 +8,14 @@ const envSchema = z.object({
     .string()
     .min(32, 'must be at least 32 characters (generate: openssl rand -base64 32)'),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  // SMTP transport for notification delivery. Defaults point at the Mailpit
+  // container in docker compose, so boot is self-contained with zero external
+  // keys; production overrides SMTP_URL with a real relay.
+  SMTP_URL: z.string().min(1).default('smtp://localhost:1025'),
+  MAIL_FROM: z.string().min(1).default('CareOps <no-reply@careops.local>'),
+  // BullMQ queue name. Overridden per e2e suite so parallel workers never
+  // cross-process each other's jobs against the wrong database.
+  NOTIFICATIONS_QUEUE_NAME: z.string().min(1).default('notifications'),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -19,6 +27,9 @@ export type AppConfig = {
   redisUrl: string;
   betterAuthSecret: string;
   nodeEnv: Env['NODE_ENV'];
+  smtpUrl: string;
+  mailFrom: string;
+  notificationsQueueName: string;
 };
 
 export class EnvValidationError extends Error {
@@ -42,6 +53,9 @@ export function validateEnv(raw: Record<string, string | undefined>): AppConfig 
     redisUrl: result.data.REDIS_URL,
     betterAuthSecret: result.data.BETTER_AUTH_SECRET,
     nodeEnv: result.data.NODE_ENV,
+    smtpUrl: result.data.SMTP_URL,
+    mailFrom: result.data.MAIL_FROM,
+    notificationsQueueName: result.data.NOTIFICATIONS_QUEUE_NAME,
   };
 }
 

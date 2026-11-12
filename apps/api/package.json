@@ -26,6 +26,7 @@
     "mongodb": "^7.8.0",
     "mongoose": "^9.12.1",
     "nestjs-zod": "^5.6.0",
+    "nodemailer": "^10.5.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "zod": "^4.1.12"
@@ -40,6 +41,7 @@
     "@types/ioredis": "^5.0.0",
     "@types/jest": "^30.0.0",
     "@types/node": "^24.0.0",
+    "@types/nodemailer": "^8.0.2",
     "@types/supertest": "^7.0.0",
     "dotenv": "^18.0.10",
     "jest": "^30.2.0",

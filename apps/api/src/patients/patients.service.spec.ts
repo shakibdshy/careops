@@ -6,7 +6,7 @@ import type { PatientRepository } from './patient.repository.js';
 import { AuditService } from '../audit/audit.service.js';
 import {
   patientCreatedJobId,
-  type PatientCreatedJob,
+  type NotificationJob,
 } from '../notifications/notifications.tokens.js';
 import type { PatientDoc } from './patient.schema.js';
 
@@ -48,7 +48,7 @@ function fakeRepo(
   return merged as unknown as PatientRepository;
 }
 
-function fakeQueue(): Queue<PatientCreatedJob> & { added: Array<Record<string, unknown>> } {
+function fakeQueue(): Queue<NotificationJob> & { added: Array<Record<string, unknown>> } {
   const added: Array<Record<string, unknown>> = [];
   return {
     add: async (name: string, data: Record<string, unknown>, options?: Record<string, unknown>) => {
@@ -56,7 +56,7 @@ function fakeQueue(): Queue<PatientCreatedJob> & { added: Array<Record<string, u
       return {} as never;
     },
     added,
-  } as unknown as Queue<PatientCreatedJob> & { added: Array<Record<string, unknown>> };
+  } as unknown as Queue<NotificationJob> & { added: Array<Record<string, unknown>> };
 }
 
 function fakeAudit(): AuditService & { records: unknown[] } {

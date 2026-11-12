@@ -4,9 +4,16 @@ import dotenv from 'dotenv';
 dotenv.config({ path: new URL('../.env', import.meta.url) });
 import { MongoClient, ObjectId } from 'mongodb';
 import mongoose from 'mongoose';
+import { Queue } from 'bullmq';
+import Redis from 'ioredis';
 import type { AppointmentStatus } from '@careops/shared';
 import { loadConfig } from './config/env.js';
 import { createBetterAuth } from './auth/auth.factory.js';
+import {
+  APPOINTMENT_REMINDER_JOB,
+  REMINDER_LEAD_MS,
+  appointmentReminderJobId,
+} from './notifications/notifications.tokens.js';
 
 const OWNER = { name: 'Dana Owner', email: 'owner@demo.careops', password: 'careops-demo-1' };
 const ADMIN = { name: 'Alex Admin', email: 'admin@demo.careops', password: 'careops-demo-1' };
@@ -280,6 +287,14 @@ async function main(): Promise<void> {
     memberIdByRole[member.role as string] = String(member._id);
   }
 
+  // Reminder jobs for tomorrow's upcoming visits (W2-T8). The seed writes
+  // appointments directly, so it enqueues the delayed reminders the API would
+  // have scheduled on booking — same queue name + job-id contract as the worker.
+  const notificationsQueue = new Queue(config.notificationsQueueName, {
+    connection: new Redis(config.redisUrl, { maxRetriesPerRequest: null }),
+  });
+  let remindersQueued = 0;
+
   const seedDay = new Date();
   seedDay.setUTCHours(0, 0, 0, 0);
   for (const fixture of APPOINTMENT_FIXTURES) {
@@ -322,15 +337,40 @@ async function main(): Promise<void> {
       },
       at: new Date(),
     });
+
+    // Tomorrow's SCHEDULED/CONFIRMED visits are the reminder candidates: a
+    // delayed job at start − 24h (due-now if that time has already passed).
+    if (
+      fixture.dayOffset === 1 &&
+      (fixture.status === 'SCHEDULED' || fixture.status === 'CONFIRMED')
+    ) {
+      const appointmentId = String(inserted.insertedId);
+      await notificationsQueue.add(
+        APPOINTMENT_REMINDER_JOB,
+        {
+          organizationId: org.id,
+          appointmentId,
+          patientId: patientIds[fixture.patientIndex],
+          start: start.toISOString(),
+        },
+        {
+          jobId: appointmentReminderJobId(appointmentId),
+          delay: Math.max(0, start.getTime() - REMINDER_LEAD_MS - Date.now()),
+        },
+      );
+      remindersQueued += 1;
+    }
   }
 
   console.log('Seed complete.');
   console.log('  Organization:', org.name);
   console.log('  Appointments: %d fixtures across all 7 statuses', APPOINTMENT_FIXTURES.length);
+  console.log('  Reminders queued: %d (tomorrow’s upcoming visits)', remindersQueued);
   console.log('  Owner  : %s / %s', OWNER.email, OWNER.password);
   console.log('  Admin  : %s / %s', ADMIN.email, ADMIN.password);
   console.log('  Member : %s / %s', MEMBER.email, MEMBER.password);
 
+  await notificationsQueue.close();
   await mongoose.disconnect();
   await client.close();
 }

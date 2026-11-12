@@ -18,7 +18,33 @@ describe('validateEnv', () => {
       redisUrl: 'redis://localhost:6379',
       betterAuthSecret: testSecret,
       nodeEnv: 'development',
+      smtpUrl: 'smtp://localhost:1025',
+      mailFrom: 'CareOps <no-reply@careops.local>',
+      notificationsQueueName: 'notifications',
     });
+  });
+
+  it('defaults SMTP, mail-from, and queue name for self-contained boot', () => {
+    const config = validateEnv({
+      MONGODB_URI: 'mongodb://localhost:27017/careops',
+      REDIS_URL: 'redis://localhost:6379',
+      BETTER_AUTH_SECRET: testSecret,
+    });
+    expect(config.smtpUrl).toBe('smtp://localhost:1025');
+    expect(config.mailFrom).toBe('CareOps <no-reply@careops.local>');
+    expect(config.notificationsQueueName).toBe('notifications');
+  });
+
+  it('honours SMTP, mail-from, and queue-name overrides', () => {
+    const config = validateEnv({
+      ...validEnv,
+      SMTP_URL: 'smtp://relay.example.test:587',
+      MAIL_FROM: 'Clinic <care@example.test>',
+      NOTIFICATIONS_QUEUE_NAME: 'notifications-custom',
+    });
+    expect(config.smtpUrl).toBe('smtp://relay.example.test:587');
+    expect(config.mailFrom).toBe('Clinic <care@example.test>');
+    expect(config.notificationsQueueName).toBe('notifications-custom');
   });
 
   it('applies defaults for PORT and NODE_ENV', () => {
@@ -55,7 +81,16 @@ describe('validateEnv', () => {
 });
 
 describe('loadConfig', () => {
-  const envKeys = ['PORT', 'MONGODB_URI', 'REDIS_URL', 'BETTER_AUTH_SECRET', 'NODE_ENV'] as const;
+  const envKeys = [
+    'PORT',
+    'MONGODB_URI',
+    'REDIS_URL',
+    'BETTER_AUTH_SECRET',
+    'NODE_ENV',
+    'SMTP_URL',
+    'MAIL_FROM',
+    'NOTIFICATIONS_QUEUE_NAME',
+  ] as const;
 
   afterEach(() => {
     jest.resetModules();

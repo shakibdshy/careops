@@ -12,6 +12,15 @@ import type { PatientDoc } from '../patients/patient.schema.js';
 import { AuditService } from '../audit/audit.service.js';
 import type { FullOrganization } from '../auth/org-context.js';
 import type { ReportsCache } from '../reports/reports.cache.js';
+import type { Queue } from 'bullmq';
+import {
+  APPOINTMENT_CREATED_JOB,
+  APPOINTMENT_REMINDER_JOB,
+  REMINDER_LEAD_MS,
+  appointmentCreatedJobId,
+  appointmentReminderJobId,
+} from '../notifications/notifications.tokens.js';
+import type { NotificationJob } from '../notifications/notifications.tokens.js';
 
 const context = { organizationId: 'org-1' };
 const actor = { id: 'user-1', email: 'owner@example.test' };
@@ -149,6 +158,44 @@ function fakeCache(): ReportsCache {
   return { bumpGeneration: async () => undefined } as unknown as ReportsCache;
 }
 
+interface RecordedAdd {
+  name: string;
+  data: Record<string, unknown>;
+  options: { jobId: string; delay?: number };
+}
+
+type RecordingQueue = Queue<NotificationJob> & {
+  added: RecordedAdd[];
+  removed: string[];
+  removeError?: Error;
+};
+
+function fakeQueue(): RecordingQueue {
+  const added: RecordedAdd[] = [];
+  const removed: string[] = [];
+  const fake = {
+    added,
+    removed,
+    removeError: undefined as Error | undefined,
+    add: (
+      name: string,
+      data: Record<string, unknown>,
+      options: { jobId: string; delay?: number },
+    ): Promise<undefined> => {
+      added.push({ name, data, options });
+      return Promise.resolve(undefined);
+    },
+    remove: (jobId: string): Promise<undefined> => {
+      if (fake.removeError) {
+        return Promise.reject(fake.removeError);
+      }
+      removed.push(jobId);
+      return Promise.resolve(undefined);
+    },
+  };
+  return fake as unknown as RecordingQueue;
+}
+
 /** Executes the transaction callback inline, like a healthy replica set. */
 function fakeConnection(): Connection {
   const session = {
@@ -189,6 +236,7 @@ describe('AppointmentsService', () => {
       fakePatientRepo(true),
       audit,
       fakeCache(),
+      fakeQueue(),
       fakeConnection(),
     );
 
@@ -207,6 +255,7 @@ describe('AppointmentsService', () => {
       fakePatientRepo(true),
       fakeAudit(),
       fakeCache(),
+      fakeQueue(),
       fakeConnection(),
     );
     await expect(
@@ -220,6 +269,7 @@ describe('AppointmentsService', () => {
       fakePatientRepo(false),
       fakeAudit(),
       fakeCache(),
+      fakeQueue(),
       fakeConnection(),
     );
     await expect(service.create(context, members, actor, { ...validCreate })).rejects.toThrow(
@@ -234,6 +284,7 @@ describe('AppointmentsService', () => {
       fakePatientRepo(true),
       audit,
       fakeCache(),
+      fakeQueue(),
       fakeConnection(),
     );
     await expect(service.create(context, members, actor, { ...validCreate })).rejects.toThrow(
@@ -257,6 +308,7 @@ describe('AppointmentsService', () => {
       fakePatientRepo(true),
       fakeAudit(),
       fakeCache(),
+      fakeQueue(),
       fakeConnection(),
     );
     await service.create(context, members, actor, { ...validCreate, notes: 'bring chart' });
@@ -269,6 +321,7 @@ describe('AppointmentsService', () => {
       fakePatientRepo(true),
       fakeAudit(),
       fakeCache(),
+      fakeQueue(),
       abortingConnection(),
     );
     await expect(service.create(context, members, actor, { ...validCreate })).rejects.toThrow(
@@ -282,6 +335,7 @@ describe('AppointmentsService', () => {
       fakePatientRepo(true),
       fakeAudit(),
       fakeCache(),
+      fakeQueue(),
       fakeConnection(),
     );
     const appointment = await service.findOne(context, 'a1');
@@ -294,6 +348,7 @@ describe('AppointmentsService', () => {
       fakePatientRepo(true),
       fakeAudit(),
       fakeCache(),
+      fakeQueue(),
       fakeConnection(),
     );
     await expect(service.findOne(context, 'missing')).rejects.toThrow(NotFoundException);
@@ -311,6 +366,7 @@ describe('AppointmentsService', () => {
       fakePatientRepo(true),
       fakeAudit(),
       fakeCache(),
+      fakeQueue(),
       fakeConnection(),
     );
     const page = await service.listPage(context, { limit: 2 });
@@ -331,6 +387,7 @@ describe('AppointmentsService', () => {
       fakePatientRepo(true),
       fakeAudit(),
       fakeCache(),
+      fakeQueue(),
       fakeConnection(),
     );
     await service.listPage(context, {
@@ -362,6 +419,7 @@ describe('AppointmentsService', () => {
       fakePatientRepo(true),
       fakeAudit(),
       fakeCache(),
+      fakeQueue(),
       fakeConnection(),
     );
     await service.listPage(context, { from: '2026-11-01T00:00:00.000Z', limit: 20 });
@@ -391,6 +449,7 @@ describe('AppointmentsService', () => {
         fakePatientRepo(true),
         audit,
         fakeCache(),
+        fakeQueue(),
         fakeConnection(),
       );
 
@@ -416,6 +475,7 @@ describe('AppointmentsService', () => {
         fakePatientRepo(true),
         fakeAudit(),
         fakeCache(),
+        fakeQueue(),
         fakeConnection(),
       );
       const error = await service
@@ -436,6 +496,7 @@ describe('AppointmentsService', () => {
           fakePatientRepo(true),
           fakeAudit(),
           fakeCache(),
+          fakeQueue(),
           fakeConnection(),
         );
         const error = await service
@@ -451,6 +512,7 @@ describe('AppointmentsService', () => {
         fakePatientRepo(true),
         fakeAudit(),
         fakeCache(),
+        fakeQueue(),
         fakeConnection(),
       );
       await expect(service.transition(context, actor, 'missing', 'CONFIRMED')).rejects.toThrow(
@@ -468,6 +530,7 @@ describe('AppointmentsService', () => {
         fakePatientRepo(true),
         fakeAudit(),
         fakeCache(),
+        fakeQueue(),
         fakeConnection(),
       );
       const error = await service
@@ -502,6 +565,7 @@ describe('AppointmentsService', () => {
         fakePatientRepo(true),
         audit,
         fakeCache(),
+        fakeQueue(),
         fakeConnection(),
       );
 
@@ -545,6 +609,7 @@ describe('AppointmentsService', () => {
         fakePatientRepo(true),
         fakeAudit(),
         fakeCache(),
+        fakeQueue(),
         fakeConnection(),
       );
       await service.reschedule(context, members, actor, 'a1', { durationMinutes: 60 });
@@ -568,6 +633,7 @@ describe('AppointmentsService', () => {
         fakePatientRepo(true),
         fakeAudit(),
         fakeCache(),
+        fakeQueue(),
         fakeConnection(),
       );
       await service.reschedule(context, members, actor, 'a1', { memberId: 'member-1' });
@@ -589,6 +655,7 @@ describe('AppointmentsService', () => {
           fakePatientRepo(true),
           audit,
           fakeCache(),
+          fakeQueue(),
           fakeConnection(),
         );
         const error = await service
@@ -606,6 +673,7 @@ describe('AppointmentsService', () => {
         fakePatientRepo(true),
         audit,
         fakeCache(),
+        fakeQueue(),
         fakeConnection(),
       );
       const error = await service
@@ -621,6 +689,7 @@ describe('AppointmentsService', () => {
         fakePatientRepo(true),
         fakeAudit(),
         fakeCache(),
+        fakeQueue(),
         fakeConnection(),
       );
       await expect(
@@ -634,6 +703,7 @@ describe('AppointmentsService', () => {
         fakePatientRepo(true),
         fakeAudit(),
         fakeCache(),
+        fakeQueue(),
         fakeConnection(),
       );
       await expect(
@@ -647,6 +717,7 @@ describe('AppointmentsService', () => {
         fakePatientRepo(true),
         fakeAudit(),
         fakeCache(),
+        fakeQueue(),
         fakeConnection(),
       );
       const error = await service
@@ -661,11 +732,178 @@ describe('AppointmentsService', () => {
         fakePatientRepo(true),
         fakeAudit(),
         fakeCache(),
+        fakeQueue(),
         abortingConnection(),
       );
       await expect(
         service.reschedule(context, members, actor, 'a1', { durationMinutes: 45 }),
       ).rejects.toThrow(ConflictException);
+    });
+  });
+
+  describe('notification events', () => {
+    const hoursFromNow = (hours: number) => new Date(Date.now() + hours * 3_600_000);
+
+    it('booking enqueues an immediate confirmation and a reminder delayed to start − 24h', async () => {
+      const queue = fakeQueue();
+      const start = hoursFromNow(48);
+      const service = new AppointmentsService(
+        fakeRepo({
+          createInTransaction: async () =>
+            appointmentDoc({ start, end: new Date(start.getTime() + 30 * 60_000) }),
+        }),
+        fakePatientRepo(true),
+        fakeAudit(),
+        fakeCache(),
+        queue,
+        fakeConnection(),
+      );
+
+      await service.create(context, members, actor, { ...validCreate });
+
+      expect(queue.added).toHaveLength(2);
+      expect(queue.added[0]?.name).toBe(APPOINTMENT_CREATED_JOB);
+      expect(queue.added[0]?.options.jobId).toBe(appointmentCreatedJobId('a1'));
+      expect(queue.added[0]?.options.delay).toBeUndefined();
+      expect(queue.added[1]?.name).toBe(APPOINTMENT_REMINDER_JOB);
+      expect(queue.added[1]?.options.jobId).toBe(appointmentReminderJobId('a1'));
+      // start − 24h is ~24h ahead; allow a wide tolerance for test runtime.
+      expect(queue.added[1]?.options.delay).toBeGreaterThan(REMINDER_LEAD_MS - 3_600_000);
+      expect(queue.added[1]?.options.delay).toBeLessThanOrEqual(REMINDER_LEAD_MS);
+      expect(queue.added[1]?.data).toMatchObject({ appointmentId: 'a1', patientId: 'p1' });
+    });
+
+    it('booking within 24h enqueues the confirmation but no reminder (already past reminder time)', async () => {
+      const queue = fakeQueue();
+      const start = hoursFromNow(2);
+      const service = new AppointmentsService(
+        fakeRepo({
+          createInTransaction: async () =>
+            appointmentDoc({ start, end: new Date(start.getTime() + 30 * 60_000) }),
+        }),
+        fakePatientRepo(true),
+        fakeAudit(),
+        fakeCache(),
+        queue,
+        fakeConnection(),
+      );
+
+      await service.create(context, members, actor, { ...validCreate });
+
+      expect(queue.added).toHaveLength(1);
+      expect(queue.added[0]?.name).toBe(APPOINTMENT_CREATED_JOB);
+    });
+
+    it('cancelling removes the pending reminder job', async () => {
+      const queue = fakeQueue();
+      const reads = [appointmentDoc(), appointmentDoc({ status: 'CANCELLED' })];
+      const service = new AppointmentsService(
+        fakeRepo({
+          findOne: async () => reads.shift() ?? null,
+          findOneAndUpdate: async () => appointmentDoc(),
+        }),
+        fakePatientRepo(true),
+        fakeAudit(),
+        fakeCache(),
+        queue,
+        fakeConnection(),
+      );
+
+      await service.transition(context, actor, 'a1', 'CANCELLED');
+
+      expect(queue.removed).toEqual([appointmentReminderJobId('a1')]);
+    });
+
+    it('a non-cancel transition leaves the reminder job in place', async () => {
+      const queue = fakeQueue();
+      const reads = [appointmentDoc(), appointmentDoc({ status: 'CONFIRMED' })];
+      const service = new AppointmentsService(
+        fakeRepo({
+          findOne: async () => reads.shift() ?? null,
+          findOneAndUpdate: async () => appointmentDoc(),
+        }),
+        fakePatientRepo(true),
+        fakeAudit(),
+        fakeCache(),
+        queue,
+        fakeConnection(),
+      );
+
+      await service.transition(context, actor, 'a1', 'CONFIRMED');
+
+      expect(queue.removed).toHaveLength(0);
+    });
+
+    it('cancelling still succeeds when reminder removal fails (best-effort boundary)', async () => {
+      const queue = fakeQueue();
+      queue.removeError = new Error('redis down');
+      const reads = [appointmentDoc(), appointmentDoc({ status: 'CANCELLED' })];
+      const service = new AppointmentsService(
+        fakeRepo({
+          findOne: async () => reads.shift() ?? null,
+          findOneAndUpdate: async () => appointmentDoc(),
+        }),
+        fakePatientRepo(true),
+        fakeAudit(),
+        fakeCache(),
+        queue,
+        fakeConnection(),
+      );
+
+      const result = await service.transition(context, actor, 'a1', 'CANCELLED');
+      expect(result.status).toBe('CANCELLED');
+    });
+
+    it('rescheduling re-arms the reminder for the moved start', async () => {
+      const queue = fakeQueue();
+      const movedStart = hoursFromNow(72);
+      const service = new AppointmentsService(
+        fakeRepo({
+          findOne: async () =>
+            appointmentDoc({
+              start: movedStart,
+              end: new Date(movedStart.getTime() + 30 * 60_000),
+            }),
+        }),
+        fakePatientRepo(true),
+        fakeAudit(),
+        fakeCache(),
+        queue,
+        fakeConnection(),
+      );
+
+      await service.reschedule(context, members, actor, 'a1', { start: movedStart.toISOString() });
+
+      expect(queue.removed).toEqual([appointmentReminderJobId('a1')]);
+      expect(queue.added).toHaveLength(1);
+      expect(queue.added[0]?.name).toBe(APPOINTMENT_REMINDER_JOB);
+      expect(queue.added[0]?.options.jobId).toBe(appointmentReminderJobId('a1'));
+      expect(queue.added[0]?.data).toMatchObject({ start: movedStart.toISOString() });
+      expect(queue.added[0]?.options.delay).toBeGreaterThan(47 * 3_600_000);
+    });
+
+    it('rescheduling to within 24h removes the old reminder and schedules none', async () => {
+      const queue = fakeQueue();
+      const movedStart = hoursFromNow(3);
+      const service = new AppointmentsService(
+        fakeRepo({
+          findOne: async () =>
+            appointmentDoc({
+              start: movedStart,
+              end: new Date(movedStart.getTime() + 30 * 60_000),
+            }),
+        }),
+        fakePatientRepo(true),
+        fakeAudit(),
+        fakeCache(),
+        queue,
+        fakeConnection(),
+      );
+
+      await service.reschedule(context, members, actor, 'a1', { start: movedStart.toISOString() });
+
+      expect(queue.removed).toEqual([appointmentReminderJobId('a1')]);
+      expect(queue.added).toHaveLength(0);
     });
   });
 });

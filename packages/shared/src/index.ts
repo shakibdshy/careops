@@ -12,6 +12,7 @@ export * from './appointments.js';
 export * from './appointment-status.js';
 export * from './cursor.js';
 export * from './errors.js';
+export * from './notifications.js';
 export * from './organizations.js';
 export * from './patients.js';
 export * from './reports.js';

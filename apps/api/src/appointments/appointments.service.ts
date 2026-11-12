@@ -1,7 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectConnection } from '@nestjs/mongoose';
 import { ConflictException } from '@nestjs/common';
 import type { Connection, QueryFilter } from 'mongoose';
+import { Queue } from 'bullmq';
 import type {
   Appointment,
   AppointmentStatus,
@@ -15,6 +16,18 @@ import type { OrgRequestContext } from '../data/org-scoped.repository.js';
 import type { FullOrganization } from '../auth/org-context.js';
 import { PatientRepository } from '../patients/patient.repository.js';
 import { ReportsCache } from '../reports/reports.cache.js';
+import {
+  APPOINTMENT_CREATED_JOB,
+  APPOINTMENT_REMINDER_JOB,
+  NOTIFICATIONS_QUEUE,
+  REMINDER_LEAD_MS,
+  appointmentCreatedJobId,
+  appointmentReminderJobId,
+} from '../notifications/notifications.tokens.js';
+import type {
+  AppointmentReminderJob,
+  NotificationJob,
+} from '../notifications/notifications.tokens.js';
 import { AppointmentRepository } from './appointment.repository.js';
 import type { AppointmentDoc } from './appointment.schema.js';
 import { ALLOWED_TRANSITIONS, isAllowedTransition, RESCHEDULABLE_STATUSES } from '@careops/shared';
@@ -83,11 +96,15 @@ function notReschedulable(status: AppointmentStatus): ConflictException {
 
 @Injectable()
 export class AppointmentsService {
+  private readonly logger = new Logger(AppointmentsService.name);
+
   constructor(
     private readonly appointmentRepository: AppointmentRepository,
     private readonly patientRepository: PatientRepository,
     private readonly auditService: AuditService,
     private readonly reportsCache: ReportsCache,
+    @Inject(NOTIFICATIONS_QUEUE)
+    private readonly notificationsQueue: Queue<NotificationJob>,
     @InjectConnection()
     private readonly connection: Connection,
   ) {}
@@ -176,6 +193,7 @@ export class AppointmentsService {
       after: toAppointmentDto(created),
     });
     await this.reportsCache.bumpGeneration(context.organizationId);
+    await this.enqueueBookingNotifications(context, created);
     return toAppointmentDto(created);
   }
 
@@ -269,6 +287,10 @@ export class AppointmentsService {
       after: toAppointmentDto(after),
     });
     await this.reportsCache.bumpGeneration(context.organizationId);
+    // A cancelled Appointment must not fire its pending reminder (ticket #29).
+    if (target === 'CANCELLED') {
+      await this.cancelReminder(appointmentId);
+    }
     return toAppointmentDto(after);
   }
 
@@ -365,6 +387,53 @@ export class AppointmentsService {
       after: toAppointmentDto(after),
     });
     await this.reportsCache.bumpGeneration(context.organizationId);
+    // Re-arm the reminder for the moved start: drop the old delayed job, then
+    // schedule a new one only if start − 24h is still ahead (ticket #29). A move
+    // to within 24h leaves no reminder — it is already past the reminder time.
+    await this.cancelReminder(appointmentId);
+    await this.scheduleReminder({
+      organizationId: context.organizationId,
+      appointmentId,
+      patientId: after.patientId,
+      start: after.start.toISOString(),
+    });
     return toAppointmentDto(after);
+  }
+
+  /** Confirmation (immediate) + reminder (delayed to start − 24h) on booking. */
+  private async enqueueBookingNotifications(
+    context: OrgRequestContext,
+    appointment: AppointmentDoc,
+  ): Promise<void> {
+    const data = {
+      organizationId: context.organizationId,
+      appointmentId: String(appointment._id),
+      patientId: appointment.patientId,
+      start: appointment.start.toISOString(),
+    };
+    await this.notificationsQueue.add(APPOINTMENT_CREATED_JOB, data, {
+      jobId: appointmentCreatedJobId(data.appointmentId),
+    });
+    await this.scheduleReminder(data);
+  }
+
+  /** Schedule the reminder only when start − 24h is still in the future. */
+  private async scheduleReminder(data: AppointmentReminderJob): Promise<void> {
+    const delay = new Date(data.start).getTime() - REMINDER_LEAD_MS - Date.now();
+    if (delay > 0) {
+      await this.notificationsQueue.add(APPOINTMENT_REMINDER_JOB, data, {
+        jobId: appointmentReminderJobId(data.appointmentId),
+        delay,
+      });
+    }
+  }
+
+  /** Best-effort removal of a pending reminder (it may already have fired). */
+  private async cancelReminder(appointmentId: string): Promise<void> {
+    try {
+      await this.notificationsQueue.remove(appointmentReminderJobId(appointmentId));
+    } catch (error) {
+      this.logger.warn(`Could not cancel reminder for ${appointmentId}: ${String(error)}`);
+    }
   }
 }
