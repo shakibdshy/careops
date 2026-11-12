@@ -100,6 +100,27 @@ CI runs the same lanes on every PR (lint → typecheck → test → build) and
 publishes the coverage summary to the job. Coverage percentages are also
 visible in the API test output (`--coverage`).
 
+## Performance receipts
+
+"Optimized" as evidence, not prose — every number measured with a reproducible
+command ([tools/README.md](tools/README.md)), on a throwaway multi-tenant
+dataset (80k appointments), never the demo data:
+
+- **Indexes**: the booking Conflict check drops from a COLLSCAN of 80,000 docs
+  to an IXSCAN of 479; a cursor list page examines 21 docs at any depth (vs
+  60,021 on a bare `_id` walk).
+- **N+1**: provider-utilization is **1** query (server-side `$lookup`) vs **87**
+  naive per-row fetches — 3.04× faster, identical rows.
+- **Cache**: settled report reads ~1.4–2× faster (controlled miss→hit);
+  1.38–1.84× under load (k6, drift-normalized).
+- **Lighthouse `/dashboard`** (production build): performance **89** mobile /
+  **100** desktop, accessibility 98, 0 ms blocking time, near-zero layout shift.
+
+Before/after tables + commands: [docs/performance.md](docs/performance.md).
+How it grows — replicas behind a load balancer, Mongo index catalog / cursor
+paging / read preference / shard key, cache layers, BullMQ worker scaling, and a
+capacity table fed by the k6 numbers: [docs/scaling.md](docs/scaling.md).
+
 ## Development
 
 ```bash

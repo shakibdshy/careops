@@ -1,0 +1,10 @@
+{
+  "name": "@careops/receipts-tools",
+  "private": true,
+  "type": "module",
+  "description": "Measurement-only scripts for the W2-T9 receipts (explain, bench, k6, Lighthouse). Not a Turborepo workspace: CI never installs or runs this directory. See tools/README.md for the isolated boot + run instructions.",
+  "devDependencies": {
+    "lighthouse": "^13.6.0",
+    "puppeteer-core": "^25.17.0"
+  }
+}

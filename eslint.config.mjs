@@ -18,6 +18,11 @@ export default tseslint.config(
       'commitlint.config.mjs',
       // No tsconfig covers the root; the config file cannot lint itself.
       'eslint.config.mjs',
+      // Standalone performance-receipt scripts (W2-T9): node .mjs harnesses and
+      // k6 .js scenarios run by their own runtimes, not app code, and no tsconfig
+      // covers the root — same rationale as the config files above. Prettier
+      // still formats them; CI's per-package turbo lint never reaches tools/.
+      'tools/**',
     ],
   },
   eslint.configs.recommended,

@@ -1,0 +1,27 @@
+{
+  "scenario": "appointments-list",
+  "generatedAt": "2026-11-12T18:04:21.853Z",
+  "baseUrl": "http://localhost:3011",
+  "vus": 10,
+  "duration": "30s",
+  "limit": 20,
+  "pagesPerIteration": 3,
+  "iterations": 1140,
+  "failures": 0,
+  "firstPage": {
+    "count": 1140,
+    "avg": 26.76,
+    "med": 27.11,
+    "p90": 33.47,
+    "p95": 35.42,
+    "max": 40.78
+  },
+  "deepPage": {
+    "count": 2280,
+    "avg": 18.7,
+    "med": 18.27,
+    "p90": 23.03,
+    "p95": 24.56,
+    "max": 36.31
+  }
+}
