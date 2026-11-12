@@ -1,9 +1,10 @@
-import type { AppointmentStatus } from '@careops/shared';
+import type { AppointmentStatus } from './appointments.js';
 
 /**
  * The clinic lifecycle (W2-T3). Terminal statuses have no outgoing edges;
  * NO_SHOW is staff-marked, never inferred. Reschedule is legal only while the
- * visit is still upcoming (SCHEDULED or CONFIRMED).
+ * visit is still upcoming (SCHEDULED or CONFIRMED). Shared so the API enforces
+ * and the web renders the same legal moves (ADR-0002).
  */
 export const ALLOWED_TRANSITIONS: Record<AppointmentStatus, readonly AppointmentStatus[]> = {
   SCHEDULED: ['CONFIRMED', 'CHECKED_IN', 'CANCELLED', 'NO_SHOW'],

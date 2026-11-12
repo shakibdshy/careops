@@ -123,6 +123,10 @@ function Workspace() {
           Patients
         </Link>{' '}
         ·{' '}
+        <Link to="/appointments" className="underline" data-testid="nav-appointments">
+          Appointments
+        </Link>{' '}
+        ·{' '}
         <Link to="/audit" className="underline" data-testid="nav-audit">
           Audit Entries
         </Link>

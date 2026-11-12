@@ -3,9 +3,9 @@ import { cursorPage } from './cursor.js';
 
 /**
  * The Appointment lifecycle (glossary: scheduled → confirmed → checked in →
- * in progress → completed, or cancelled / no-show). The transition map that
- * governs which moves are legal lives in the API service; the contract only
- * names the states.
+ * in progress → completed, or cancelled / no-show). The pure transition map
+ * that governs which moves are legal lives in ./appointment-status.ts so the
+ * API enforces and the web renders the same edges; the contract names the states.
  */
 export const appointmentStatusSchema = z.enum([
   'SCHEDULED',
