@@ -49,8 +49,9 @@ with hot reload.
 ```
 apps/
   api/    NestJS — auth (BetterAuth mount), organizations, patients,
-          audit, notifications (BullMQ), health; org-scoped repository
-          base enforces tenant isolation at compile time
+          appointments (transactional booking), audit, notifications
+          (BullMQ), health; org-scoped repository base enforces tenant
+          isolation at compile time
   web/    TanStack Start — login/signup, workspace (org + invites),
           patients CRUD, audit browsing
 packages/

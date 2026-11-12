@@ -20,7 +20,7 @@ export interface OrgRequestContext {
  * must lead with `organizationId` (see ADR-0006).
  */
 export abstract class OrgScopedRepository<T extends { _id: unknown }> {
-  protected constructor(private readonly model: Model<T>) {}
+  protected constructor(protected readonly model: Model<T>) {}
 
   protected orgFilter(context: OrgRequestContext, filter: QueryFilter<T> = {}): QueryFilter<T> {
     return { ...filter, organizationId: context.organizationId };
