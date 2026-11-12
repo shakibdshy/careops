@@ -1,0 +1,37 @@
+# Dependencies and build output — rebuilt inside the image, never copied from host.
+node_modules
+**/node_modules
+dist
+**/dist
+build
+**/build
+.output
+**/.output
+.turbo
+**/.turbo
+
+# Secrets and local env — must never enter an image layer.
+.env
+.env.*
+**/.env
+**/.env.*
+
+# VCS, hooks, CI, and local tooling.
+.git
+.github
+.husky
+.vscode
+.idea
+
+# Test and coverage artifacts.
+coverage
+**/coverage
+test-results
+**/test-results
+playwright-report
+**/playwright-report
+*.log
+
+# OS / editor cruft.
+.DS_Store
+**/.DS_Store
