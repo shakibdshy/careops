@@ -8,7 +8,7 @@ import {
   patientCreatedJobId,
   NOTIFICATIONS_QUEUE,
 } from '../notifications/notifications.tokens.js';
-import type { PatientCreatedJob } from '../notifications/notifications.tokens.js';
+import type { NotificationJob } from '../notifications/notifications.tokens.js';
 import { PatientRepository } from './patient.repository.js';
 import type { PatientDoc } from './patient.schema.js';
 
@@ -40,7 +40,7 @@ export class PatientsService {
     private readonly patientRepository: PatientRepository,
     private readonly auditService: AuditService,
     @Inject(NOTIFICATIONS_QUEUE)
-    private readonly notificationsQueue: Queue<PatientCreatedJob>,
+    private readonly notificationsQueue: Queue<NotificationJob>,
   ) {}
 
   async create(

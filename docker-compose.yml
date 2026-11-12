@@ -56,6 +56,22 @@ services:
       timeout: 3s
       retries: 15
 
+  # Mailpit: a self-contained SMTP sink + web UI for notification delivery
+  # (W2-T8). The API's SMTP_URL defaults to smtp://localhost:1025; every email
+  # the stack sends is inspectable at http://localhost:8025 — zero external keys.
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - '127.0.0.1:1025:1025' # SMTP
+      - '127.0.0.1:8025:8025' # web UI
+    healthcheck:
+      # The image ships a `readyz` subcommand (v1.15.1+) that probes the running
+      # daemon — the scratch-based image has no curl/wget for the HTTP endpoint.
+      test: ['CMD', '/mailpit', 'readyz']
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
 volumes:
   mongo-data:
   redis-data:

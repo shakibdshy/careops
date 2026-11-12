@@ -30,6 +30,7 @@ export default {
     './src/appointments/appointments.service.ts': { lines: 80, branches: 80 },
     './src/audit/audit.service.ts': { lines: 80, branches: 80 },
     './src/reports/reports.service.ts': { lines: 80, branches: 80 },
+    './src/notifications/notification.processor.ts': { lines: 80, branches: 80 },
     './src/config/env.ts': { lines: 80, branches: 80 },
   },
 };

@@ -66,3 +66,14 @@ _Avoid_: Double-booking, Collision
 An optional email address on a Patient used to deliver notifications; the Patient
 never authenticates with it.
 _Avoid_: Email, Username
+
+**Notification**:
+A message delivered to a Patient's Contact Email about an Appointment or their
+record. Each carries an outcome — sent, failed, or skipped when the Patient has no
+Contact Email — and there is at most one per event per referenced record.
+_Avoid_: Email, Message, Alert
+
+**Reminder**:
+A Notification scheduled ahead of an Appointment to prompt the Patient; it is
+withdrawn if the Appointment is cancelled or moved past the reminder time.
+_Avoid_: Alert, Nudge
