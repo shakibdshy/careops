@@ -23,12 +23,13 @@ export default {
   coverageDirectory: 'coverage',
   coverageReporters: ['text', 'text-summary', 'json-summary'],
   collectCoverageFrom: ['src/**/*.ts', '!src/main.ts', '!src/bootstrap-api.ts'],
-  // 80% gate on domain services (spec week-1). Controllers are exercised by
-  // the e2e seam (not counted here); the global gate widens in T7.
+  // 80% gate on domain services (spec week-1, widened in T7 to reports).
+  // Controllers are exercised by the e2e seam (not counted here).
   coverageThreshold: {
     './src/patients/patients.service.ts': { lines: 80, branches: 80 },
     './src/appointments/appointments.service.ts': { lines: 80, branches: 80 },
     './src/audit/audit.service.ts': { lines: 80, branches: 80 },
+    './src/reports/reports.service.ts': { lines: 80, branches: 80 },
     './src/config/env.ts': { lines: 80, branches: 80 },
   },
 };

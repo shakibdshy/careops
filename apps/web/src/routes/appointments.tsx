@@ -37,6 +37,7 @@ import {
   TableRow,
 } from '#/components/ui/table';
 import { apiGet, apiPost } from '#/lib/api';
+import { STATUS_META } from '#/lib/appointment-status';
 import {
   APPOINTMENTS_PAGE_SIZE,
   appointmentsCollectionOptions,
@@ -52,44 +53,6 @@ const column = createColumnHelper<typeof features, Appointment>();
 const EMPTY_APPOINTMENTS: Appointment[] = [];
 const EMPTY_MEMBERS: OrganizationMember[] = [];
 const EMPTY_PATIENTS: Patient[] = [];
-
-const STATUS_META: Record<AppointmentStatus, { label: string; action: string; badge: string }> = {
-  SCHEDULED: {
-    label: 'Scheduled',
-    action: 'Schedule',
-    badge: 'border-sky-500/20 bg-sky-500/10 text-sky-700 dark:text-sky-300',
-  },
-  CONFIRMED: {
-    label: 'Confirmed',
-    action: 'Confirm',
-    badge: 'border-indigo-500/20 bg-indigo-500/10 text-indigo-700 dark:text-indigo-300',
-  },
-  CHECKED_IN: {
-    label: 'Checked in',
-    action: 'Check in',
-    badge: 'border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300',
-  },
-  IN_PROGRESS: {
-    label: 'In progress',
-    action: 'Start',
-    badge: 'border-violet-500/20 bg-violet-500/10 text-violet-700 dark:text-violet-300',
-  },
-  COMPLETED: {
-    label: 'Completed',
-    action: 'Complete',
-    badge: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
-  },
-  CANCELLED: {
-    label: 'Cancelled',
-    action: 'Cancel',
-    badge: 'border-border bg-muted text-muted-foreground',
-  },
-  NO_SHOW: {
-    label: 'No-show',
-    action: 'No-show',
-    badge: 'border-rose-500/20 bg-rose-500/10 text-rose-700 dark:text-rose-300',
-  },
-};
 
 const selectClass =
   'h-9 rounded-md border border-input bg-transparent px-3 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';

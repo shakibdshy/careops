@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { AuditModule } from '../audit/audit.module.js';
+import { ReportsCacheModule } from '../reports/reports-cache.module.js';
 import { PatientDocument, PatientModelSchema } from '../patients/patient.schema.js';
 import { PatientRepository } from '../patients/patient.repository.js';
 import { AppointmentDocument, AppointmentModelSchema } from './appointment.schema.js';
@@ -23,6 +24,7 @@ import { AppointmentsService } from './appointments.service.js';
       { name: PatientDocument.name, schema: PatientModelSchema },
     ]),
     AuditModule,
+    ReportsCacheModule,
   ],
   controllers: [AppointmentsController],
   providers: [AppointmentRepository, PatientRepository, AppointmentsService],

@@ -119,6 +119,10 @@ function Workspace() {
         Sign out
       </button>
       <p className="mt-6">
+        <Link to="/dashboard" className="underline" data-testid="nav-dashboard">
+          Dashboard
+        </Link>{' '}
+        ·{' '}
         <Link to="/patients" className="underline" data-testid="nav-patients">
           Patients
         </Link>{' '}
