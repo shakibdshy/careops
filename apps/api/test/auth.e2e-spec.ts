@@ -1,14 +1,10 @@
 import request from 'supertest';
-import { Test } from '@nestjs/testing';
 import type { MongoMemoryReplSet } from 'mongodb-memory-server';
 import { z } from 'zod';
 import type { INestApplication } from '@nestjs/common';
-import type { TestingModule } from '@nestjs/testing';
 import type { App } from 'supertest/types.js';
 import { errorResponseSchema, workspaceMeSchema } from '@careops/shared';
-import { AppModule } from '../src/app.module.js';
-import { bootstrapApi } from '../src/bootstrap-api.js';
-import { createTestMongo } from './mongo.js';
+import { setupE2eApp } from './mongo.js';
 
 const signUpResponseSchema = z.object({
   user: z.object({ id: z.string(), email: z.string(), name: z.string() }),
@@ -30,16 +26,7 @@ describe('Auth (e2e)', () => {
   };
 
   beforeAll(async () => {
-    mongo = await createTestMongo();
-    process.env.MONGODB_URI = mongo.getUri('careops-auth-test');
-
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-
-    app = moduleFixture.createNestApplication({ bodyParser: false });
-    bootstrapApi(app);
-    await app.init();
+    ({ app, mongo } = await setupE2eApp('careops-auth-test'));
     agent = request.agent(app.getHttpServer());
   });
 

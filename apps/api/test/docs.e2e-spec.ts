@@ -1,12 +1,8 @@
 import request from 'supertest';
-import { Test } from '@nestjs/testing';
 import type { MongoMemoryReplSet } from 'mongodb-memory-server';
 import type { INestApplication } from '@nestjs/common';
-import type { TestingModule } from '@nestjs/testing';
 import type { App } from 'supertest/types.js';
-import { AppModule } from '../src/app.module.js';
-import { bootstrapApi } from '../src/bootstrap-api.js';
-import { createTestMongo } from './mongo.js';
+import { setupE2eApp } from './mongo.js';
 
 interface OpenApiDoc {
   paths: Record<string, Record<string, unknown>>;
@@ -19,16 +15,7 @@ describe('OpenAPI document (e2e)', () => {
   let doc: OpenApiDoc;
 
   beforeAll(async () => {
-    mongo = await createTestMongo();
-    process.env.MONGODB_URI = mongo.getUri('careops-docs-test');
-
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-
-    app = moduleFixture.createNestApplication({ bodyParser: false });
-    bootstrapApi(app);
-    await app.init();
+    ({ app, mongo } = await setupE2eApp('careops-docs-test'));
 
     const res = await request(app.getHttpServer()).get('/api/docs-json').expect(200);
     doc = res.body as OpenApiDoc;

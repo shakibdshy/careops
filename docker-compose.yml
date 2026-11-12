@@ -1,17 +1,23 @@
 services:
   mongo:
     image: mongo:8
-    # Single-node replica set: transactions (e.g. the appointments booking
-    # conflict check) require one, and the e2e harness mirrors this topology.
+    # Single-node replica set: transactions (e.g. the appointment conflict
+    # check) require one, and the e2e harness mirrors this topology.
     command: ['mongod', '--replSet', 'rs0', '--bind_ip_all']
+    # Loopback only: --bind_ip_all is required so mongo-init (another
+    # container) can reach the member over the compose network, and service
+    # traffic never uses the published port — so pin it to localhost.
     ports:
-      - '27017:27017'
+      - '127.0.0.1:27017:27017'
     volumes:
       - mongo-data:/data/db
     healthcheck:
-      # Unhealthy until the set is initiated (see mongo-init) — a bare ping
-      # would pass on an unconfigured member that cannot run transactions.
-      test: ['CMD', 'mongosh', '--quiet', '--eval', 'db.hello().isWritablePrimary']
+      # Unhealthy until the set is initiated (see mongo-init). mongosh --eval
+      # exits 0 for ANY evaluated expression — even `false` — so the check
+      # must quit(1) explicitly on a non-writable member (a bare ping would
+      # pass on an unconfigured member that cannot run transactions).
+      test:
+        ['CMD', 'mongosh', '--quiet', '--eval', 'if (!db.hello().isWritablePrimary) { quit(1) }']
       interval: 2s
       timeout: 3s
       retries: 30
@@ -41,7 +47,7 @@ services:
   redis:
     image: redis:8-alpine
     ports:
-      - '6379:6379'
+      - '127.0.0.1:6379:6379'
     volumes:
       - redis-data:/data
     healthcheck:

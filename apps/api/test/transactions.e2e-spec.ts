@@ -1,76 +1,68 @@
-import { Test } from '@nestjs/testing';
-import type { MongoMemoryReplSet } from 'mongodb-memory-server';
+import { getConnectionToken } from '@nestjs/mongoose';
 import type { Db } from 'mongodb';
+import type { Connection } from 'mongoose';
 import type { INestApplication } from '@nestjs/common';
-import type { TestingModule } from '@nestjs/testing';
 import type { App } from 'supertest/types.js';
-import { AppModule } from '../src/app.module.js';
-import { bootstrapApi } from '../src/bootstrap-api.js';
-import { MONGO_DB_ACCESSOR, type MongoDbAccessor } from '../src/health/health.service.js';
-import { createTestMongo } from './mongo.js';
+import { setupE2eApp, type E2eHarness } from './mongo.js';
 
-function requireDb(mongo: MongoDbAccessor): Db {
-  const db = mongo.db();
-  if (!db) {
-    throw new Error('Mongo db handle unavailable');
-  }
-  return db;
+interface TxDoc {
+  _id: string;
+  side: string;
 }
 
 describe('Transactions (e2e)', () => {
   let app: INestApplication<App>;
-  let mongo: MongoMemoryReplSet;
+  let db: Db;
+  let harness: E2eHarness;
 
   beforeAll(async () => {
-    mongo = await createTestMongo();
-    process.env.MONGODB_URI = mongo.getUri('careops-tx-test');
+    harness = await setupE2eApp('careops-tx-test');
+    app = harness.app;
 
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-
-    app = moduleFixture.createNestApplication({ bodyParser: false });
-    bootstrapApi(app);
-    await app.init();
+    const connection = app.get<Connection>(getConnectionToken());
+    if (!connection.db) {
+      throw new Error('Mongo db handle unavailable');
+    }
+    db = connection.db;
   });
 
   afterAll(async () => {
-    await app.close();
-    await mongo.stop();
+    await harness.close();
   });
 
   it('commits a transaction spanning two collections', async () => {
-    const db = requireDb(app.get<MongoDbAccessor>(MONGO_DB_ACCESSOR));
     const session = db.client.startSession();
     try {
       await session.withTransaction(async () => {
         await db
-          .collection<{ _id: string; side: string }>('tx_a')
+          .collection<TxDoc>('tx_commit_a')
           .insertOne({ _id: 'shared', side: 'a' }, { session });
         await db
-          .collection<{ _id: string; side: string }>('tx_b')
+          .collection<TxDoc>('tx_commit_b')
           .insertOne({ _id: 'shared', side: 'b' }, { session });
       });
     } finally {
       await session.endSession();
     }
 
-    expect(await db.collection('tx_a').countDocuments()).toBe(1);
-    expect(await db.collection('tx_b').countDocuments()).toBe(1);
+    expect(await db.collection('tx_commit_a').countDocuments()).toBe(1);
+    expect(await db.collection('tx_commit_b').countDocuments()).toBe(1);
   });
 
   it('rolls back every write when the transaction aborts', async () => {
-    const db = requireDb(app.get<MongoDbAccessor>(MONGO_DB_ACCESSOR));
     const session = db.client.startSession();
     const run = session.withTransaction(async () => {
       await db
-        .collection<{ _id: string; side: string }>('tx_a')
+        .collection<TxDoc>('tx_rollback')
         .insertOne({ _id: 'doomed', side: 'a' }, { session });
       throw new Error('boom');
     });
-    await expect(run).rejects.toThrow('boom');
-    await session.endSession();
+    try {
+      await expect(run).rejects.toThrow('boom');
+    } finally {
+      await session.endSession();
+    }
 
-    expect(await db.collection('tx_a').countDocuments()).toBe(1);
+    expect(await db.collection('tx_rollback').countDocuments()).toBe(0);
   });
 });
