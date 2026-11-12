@@ -27,6 +27,7 @@ export default {
   // the e2e seam (not counted here); the global gate widens in T7.
   coverageThreshold: {
     './src/patients/patients.service.ts': { lines: 80, branches: 80 },
+    './src/appointments/appointments.service.ts': { lines: 80, branches: 80 },
     './src/audit/audit.service.ts': { lines: 80, branches: 80 },
     './src/config/env.ts': { lines: 80, branches: 80 },
   },

@@ -5,6 +5,7 @@ import { RedisModule } from './redis/redis.module.js';
 import { WorkspaceModule } from './workspace/workspace.module.js';
 import { OrganizationsModule } from './organizations/organizations.module.js';
 import { PatientsModule } from './patients/patients.module.js';
+import { AppointmentsModule } from './appointments/appointments.module.js';
 import { AuditModule } from './audit/audit.module.js';
 import { NotificationsModule } from './notifications/notifications.module.js';
 import { loadConfig } from './config/env.js';
@@ -22,6 +23,7 @@ import { closeAuth } from './auth/auth.instance.js';
     WorkspaceModule,
     OrganizationsModule,
     PatientsModule,
+    AppointmentsModule,
   ],
 })
 export class AppModule implements OnApplicationShutdown {

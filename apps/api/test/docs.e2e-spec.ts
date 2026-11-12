@@ -30,6 +30,8 @@ describe('OpenAPI document (e2e)', () => {
     const paths = Object.keys(doc.paths);
     expect(paths).toContain('/api/patients');
     expect(paths).toContain('/api/patients/{patientId}');
+    expect(paths).toContain('/api/appointments');
+    expect(paths).toContain('/api/appointments/{appointmentId}');
     expect(paths).toContain('/api/audit-entries');
     expect(paths).toContain('/api/organizations/current');
     expect(paths).toContain('/api/workspace/me');
