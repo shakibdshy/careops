@@ -44,9 +44,9 @@ export function utcDayWindow(days: number, now: Date): { start: Date; end: Date 
   };
 }
 
-/** Booked minutes ÷ (daily capacity × days). May exceed 1 for an overbooked Provider. */
-export function utilization(bookedMinutes: number, days: number): number {
-  return bookedMinutes / (CAPACITY_MINUTES_PER_DAY * days);
+/** Booked minutes ÷ the documented 8h/day capacity. 1 = one fully-booked clinic day; over a multi-day window it exceeds 1 as more days' worth of capacity is booked. */
+export function utilization(bookedMinutes: number): number {
+  return bookedMinutes / CAPACITY_MINUTES_PER_DAY;
 }
 
 /** A share of the total, 0 when there is nothing to divide (empty window). */
@@ -143,7 +143,7 @@ export class ReportsService {
             providerName: row.providerName,
             bookedMinutes: row.bookedMinutes,
             appointmentCount: row.appointmentCount,
-            utilization: utilization(row.bookedMinutes, query.days),
+            utilization: utilization(row.bookedMinutes),
           })),
         };
       },

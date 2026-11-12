@@ -47,3 +47,8 @@ export const AppointmentModelSchema = SchemaFactory.createForClass(AppointmentDo
 // by _id (ADR-0008, newest booking first).
 AppointmentModelSchema.index({ organizationId: 1, memberId: 1, start: 1 });
 AppointmentModelSchema.index({ organizationId: 1, _id: 1 });
+// Reporting query shapes (ADR-0006): the org + start-range window serves the
+// volume/status aggregations and today's range find (including its start sort);
+// the utilization pipeline additionally excludes freed slots by status.
+AppointmentModelSchema.index({ organizationId: 1, start: 1 });
+AppointmentModelSchema.index({ organizationId: 1, status: 1, start: 1 });

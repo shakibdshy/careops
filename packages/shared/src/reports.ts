@@ -45,15 +45,15 @@ export type StatusBreakdown = z.infer<typeof statusBreakdownSchema>;
 
 /**
  * Per-Provider utilization (glossary: Provider = the Member assigned). Booked
- * minutes against a documented daily capacity over the window; the Provider
- * name is resolved by the API's $lookup, not guessed client-side.
+ * minutes against the documented 8h/day capacity constant; the Provider name
+ * is resolved by the API's $lookup, not guessed client-side.
  */
 export const providerUtilizationSchema = z.object({
   memberId: z.string(),
   providerName: z.string(),
   bookedMinutes: z.number().int(),
   appointmentCount: z.number().int(),
-  /** bookedMinutes ÷ (capacityMinutesPerDay × days), 0..1+. */
+  /** bookedMinutes ÷ capacityMinutesPerDay (the 8h/day constant); 1 = one fully-booked day, can exceed 1 over a window. */
   utilization: z.number(),
 });
 export type ProviderUtilization = z.infer<typeof providerUtilizationSchema>;

@@ -115,12 +115,12 @@ describe('report math helpers', () => {
     expect(start.toISOString()).toBe('2025-12-03T00:00:00.000Z');
   });
 
-  it('computes utilization against capacity × days, allowing overbooking', () => {
-    expect(utilization(480, 1)).toBe(1);
-    expect(utilization(240, 1)).toBe(0.5);
-    expect(utilization(960, 1)).toBe(2);
-    expect(utilization(480 * 30, 30)).toBe(1);
-    expect(utilization(0, 30)).toBe(0);
+  it('computes utilization against the documented daily capacity, allowing overbooking', () => {
+    expect(utilization(480)).toBe(1);
+    expect(utilization(240)).toBe(0.5);
+    expect(utilization(960)).toBe(2);
+    expect(utilization(480 * 30)).toBe(30);
+    expect(utilization(0)).toBe(0);
   });
 
   it('computes a rate, and 0 for an empty total', () => {

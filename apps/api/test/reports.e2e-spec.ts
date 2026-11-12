@@ -226,14 +226,14 @@ describe('Reports (e2e)', () => {
       expect(report.providers[0]?.providerName).toBe(MEMBER.name);
       expect(report.providers[0]?.bookedMinutes).toBe(90);
       expect(report.providers[0]?.appointmentCount).toBe(2);
-      expect(report.providers[0]?.utilization).toBeCloseTo(90 / (480 * 30), 10);
+      expect(report.providers[0]?.utilization).toBeCloseTo(90 / 480, 10);
       expect(report.providers[1]?.memberId).toBe(ownerMemberId);
       expect(report.providers[1]?.providerName).toBe(OWNER.name);
       expect(report.providers[1]?.bookedMinutes).toBe(60);
-      expect(report.providers[1]?.utilization).toBeCloseTo(60 / (480 * 30), 10);
+      expect(report.providers[1]?.utilization).toBeCloseTo(60 / 480, 10);
     });
 
-    it('scales utilization by the window length (days=1)', async () => {
+    it('utilization is independent of the window length (days=1)', async () => {
       const report = providerUtilizationReportSchema.parse(
         (await ownerAgent.get('/api/reports/provider-utilization?days=1').expect(200)).body,
       );

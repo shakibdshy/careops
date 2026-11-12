@@ -338,7 +338,8 @@ function DashboardWorkspace({ me }: { me: WorkspaceMe }) {
               <Users className="size-4 text-primary" /> Provider utilization
             </CardTitle>
             <CardDescription>
-              Booked minutes as a share of the documented 8h/day capacity over the trailing 30 days.
+              Booked minutes against the documented 8h/day capacity (480 min); 100% = one
+              fully-booked day.
             </CardDescription>
           </CardHeader>
           <CardContent>
