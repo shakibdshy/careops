@@ -4,6 +4,9 @@
     "rootDir": ".",
     "types": ["node"],
     "noEmit": true,
+    // aws-cdk-lib's JSII classes (Vpc, Secret, …) declare `string | undefined`
+    // for props their interfaces (IVpc, ISecret) type as `string`, so structural
+    // assignment cannot hold under exactOptionalPropertyTypes.
     "exactOptionalPropertyTypes": false
   },
   "include": ["bin/**/*.ts", "lib/**/*.ts", "test/**/*.ts"]

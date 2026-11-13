@@ -24,6 +24,9 @@ import {
 const ENDPOINT = process.env.AWS_ENDPOINT_URL ?? 'http://localhost:4566';
 const REGION = process.env.AWS_DEFAULT_REGION ?? 'us-east-1';
 const CLUSTER = process.env.CAREOPS_CLUSTER ?? 'careops';
+// Physical ECS service names embed the CDK logical id ('ApiService'). Match on
+// that rather than trusting list order — W3-T4 adds a second service.
+const SERVICE_MATCH = process.env.CAREOPS_SERVICE_MATCH ?? 'ApiService';
 const DATA_HOST = process.env.CAREOPS_DATA_HOST ?? 'host.docker.internal';
 const API_PORT = Number(process.env.CAREOPS_API_PORT ?? 3001);
 const credentials = {
@@ -57,9 +60,16 @@ async function findService(client) {
   const { services } = await client.send(
     new DescribeServicesCommand({ cluster: CLUSTER, services: serviceArns }),
   );
-  const service = services?.[0];
-  if (!service) throw new Error('service description missing');
-  return service;
+  const matches = (services ?? []).filter((s) => s.serviceName?.includes(SERVICE_MATCH));
+  if (matches.length === 0) {
+    throw new Error(`no ECS service matching "${SERVICE_MATCH}" in cluster ${CLUSTER}`);
+  }
+  if (matches.length > 1) {
+    throw new Error(
+      `${matches.length} ECS services match "${SERVICE_MATCH}" — narrow it with CAREOPS_SERVICE_MATCH`,
+    );
+  }
+  return matches[0];
 }
 
 async function waitForSteady(client, serviceName) {

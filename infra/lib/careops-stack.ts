@@ -27,6 +27,7 @@ import {
   ListenerCondition,
   TargetType,
 } from 'aws-cdk-lib/aws-elasticloadbalancingv2';
+import type { ApplicationListener } from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import { CfnCacheCluster, CfnSubnetGroup } from 'aws-cdk-lib/aws-elasticache';
 import { LogGroup, RetentionDays } from 'aws-cdk-lib/aws-logs';
 import { Secret } from 'aws-cdk-lib/aws-secretsmanager';
@@ -250,6 +251,15 @@ export class CareOpsStack extends Stack {
       defaultAction: notFound,
     });
 
+    // One /api/* forward rule, attached to whichever listener terminates TLS.
+    const addApiRoute = (listener: ApplicationListener): void => {
+      listener.addAction('ApiRoute', {
+        priority: 10,
+        conditions: [ListenerCondition.pathPatterns(['/api/*'])],
+        action: ListenerAction.forward([this.targetGroup]),
+      });
+    };
+
     if (props.certificateArn) {
       const httpsListener = this.loadBalancer.addListener('HttpsListener', {
         port: 443,
@@ -257,11 +267,7 @@ export class CareOpsStack extends Stack {
         certificates: [ListenerCertificate.fromArn(props.certificateArn)],
         defaultAction: notFound,
       });
-      httpsListener.addAction('ApiRoute', {
-        priority: 10,
-        conditions: [ListenerCondition.pathPatterns(['/api/*'])],
-        action: ListenerAction.forward([this.targetGroup]),
-      });
+      addApiRoute(httpsListener);
       httpListener.addAction('HttpsRedirect', {
         priority: 1,
         conditions: [ListenerCondition.pathPatterns(['/*'])],
@@ -272,11 +278,7 @@ export class CareOpsStack extends Stack {
         }),
       });
     } else {
-      httpListener.addAction('ApiRoute', {
-        priority: 10,
-        conditions: [ListenerCondition.pathPatterns(['/api/*'])],
-        action: ListenerAction.forward([this.targetGroup]),
-      });
+      addApiRoute(httpListener);
     }
 
     // --- Outputs -----------------------------------------------------------

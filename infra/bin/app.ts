@@ -4,25 +4,26 @@ import { CareOpsStack, type CareOpsStackProps, type DeployTarget } from '../lib/
 
 const app = new App();
 
+// One reader for all `-c` context flags with their CAREOPS_* env fallbacks —
+// keeps the precedence (context > env > default) in a single place.
+const readFlag = (key: string, envVar: string): string | undefined =>
+  (app.node.tryGetContext(key) as string | undefined) ?? process.env[envVar];
+
 // Target selects AWS vs the Floci emulator; desiredCount is parameterized so the
 // same stack serves the one-replica tracer bullet and later scale-out (W3-T4).
-const target = (app.node.tryGetContext('target') ??
-  process.env.CAREOPS_DEPLOY_TARGET ??
-  'aws') as DeployTarget;
+const targetFlag = readFlag('target', 'CAREOPS_DEPLOY_TARGET') ?? 'aws';
+if (targetFlag !== 'aws' && targetFlag !== 'floci') {
+  throw new Error(`invalid target "${targetFlag}" — expected "aws" or "floci" (-c target=…)`);
+}
+const target: DeployTarget = targetFlag;
 
-const desiredCount = Number(
-  app.node.tryGetContext('desiredCount') ?? process.env.CAREOPS_DESIRED_COUNT ?? 1,
-);
+const desiredCount = Number(readFlag('desiredCount', 'CAREOPS_DESIRED_COUNT') ?? 1);
 
-const imageTag = (app.node.tryGetContext('imageTag') ??
-  process.env.CAREOPS_IMAGE_TAG ??
-  'latest') as string;
+const imageTag = readFlag('imageTag', 'CAREOPS_IMAGE_TAG') ?? 'latest';
 
-const certificateArn = (app.node.tryGetContext('certificateArn') ??
-  process.env.CAREOPS_CERTIFICATE_ARN) as string | undefined;
+const certificateArn = readFlag('certificateArn', 'CAREOPS_CERTIFICATE_ARN');
 
-const redisUrl = (app.node.tryGetContext('redisUrl') ?? process.env.CAREOPS_REDIS_URL) as
-  string | undefined;
+const redisUrl = readFlag('redisUrl', 'CAREOPS_REDIS_URL');
 
 // Concrete env only when the CDK CLI resolves credentials (CDK_DEFAULT_*). With
 // no credentials the stack stays env-agnostic so `cdk synth`/tests run offline.
