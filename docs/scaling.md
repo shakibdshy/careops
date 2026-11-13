@@ -14,18 +14,18 @@ serve any request — the load balancer needs **no sticky sessions**.
 
 ```mermaid
 flowchart TB
-  B[Browser / SPA] --> LB[Load balancer<br/>no sticky sessions]
-  subgraph api [Stateless API tier — add replicas freely]
-    A1[Replica 1<br/>NestJS + BullMQ worker]
-    A2[Replica 2<br/>NestJS + BullMQ worker]
-    AN[Replica N<br/>NestJS + BullMQ worker]
+  B[Browser / SPA] --> LB[ALB, internet-facing<br/>no sticky sessions]
+  subgraph api [Stateless API tier — ECS Fargate, auto-scaled]
+    A1[Fargate task 1<br/>NestJS + BullMQ worker]
+    A2[Fargate task 2<br/>NestJS + BullMQ worker]
+    AN[Fargate task N<br/>NestJS + BullMQ worker]
   end
   LB --> A1
   LB --> A2
   LB --> AN
   subgraph data [Shared state tier]
-    M[(MongoDB replica set<br/>domain + sessions + receipts)]
-    R[(Redis<br/>report cache + BullMQ queue)]
+    M[(MongoDB Atlas replica set<br/>domain + sessions + receipts)]
+    R[(ElastiCache Redis<br/>report cache + BullMQ queue)]
   end
   A1 --> M
   A2 --> M
@@ -184,7 +184,75 @@ request throughput scales **approximately linearly with replica count** until
 the shared state tier saturates — so the next bottleneck is Mongo (aggregation
 CPU + working set) and Redis (cache reads), addressed by the levers above
 (report cache first, then read replicas / `secondaryPreferred`, then sharding).
-We have **not** measured beyond 10 VUs / one replica; any higher number is an
-extrapolation from these operating points, not a commitment. Re-run
-`bun tools/k6/run.mjs` at higher `VUS` against a scaled stack to replace the
-extrapolation with measurement.
+The W3-T3 sections below replace that extrapolation with what is now measured
+on the deployed topology — and say plainly what is still pending a live run.
+
+## Multi-replica on AWS: the deployed topology (ADR-0012, W3-T3)
+
+The CDK stack ([`infra/`](../infra/README.md)) deploys the diagram above as
+real infrastructure: an internet-facing **ALB** (stickiness disabled, asserted
+in the template tests) routing `/api/*` to an **ECS Fargate** service — each
+replica 0.5 vCPU / 1 GB in private subnets — reading MongoDB **Atlas** via a
+runtime secret and **ElastiCache** Redis for the report cache and job queue.
+
+The service auto-scales on two **target-tracking** policies inside
+`minCapacity`/`maxCapacity` bounds (default 1–4, both deploy-time
+configurable):
+
+| Policy            | Signal                       | Target         | Out/In cooldown |
+| ----------------- | ---------------------------- | -------------- | --------------- |
+| `ScaleOnCpu`      | ECS avg CPU utilization      | 60%            | 60s / 180s      |
+| `ScaleOnRequests` | ALB request count per target | 500 req/target | 60s / 180s      |
+
+CPU catches the aggregation-heavy regime (0.5 vCPU is the first resource
+exhausted under fan-out reads); the request-count signal covers the I/O-bound
+regime CPU misses, where cache hits keep CPU low while pressure keeps rising.
+
+### Cross-replica freshness: measured (W3-T3)
+
+The property horizontal scaling depends on most — that a booking committed
+through one replica is already visible in a report read served by another — is
+proven, not assumed
+([`cross-replica-freshness.json`](../tools/receipts/cross-replica-freshness.json)):
+two replicas of the same image are booted against one shared Mongo + Redis,
+the session cookie signed on replica A is accepted by replica B (shared
+session store, ADR-0007), a booking is committed through A, and B's **next**
+daily-volume read already includes it. The mechanism is the ADR-0011
+generation counter in the shared cache: A's post-commit `INCR` advanced the
+org generation 53 → 54, so B's cached read recomputed under the new key —
+booked day 2 → 3 appointments, trailing-30d total 20 → 21. No replica-local
+cache can hide a booking from the other replicas. Reproduce with
+`bun tools/prove-replica-freshness.mjs`.
+
+Provenance, stated plainly: this run is **local** — two replicas over the
+compose data plane, not the deployed AWS tier. It proves the _mechanism_
+(shared Redis generation counter + shared Mongo sessions), which is exactly
+what the AWS topology inherits — ElastiCache stands in the same role the
+compose Redis plays here. The deployed-topology end-to-end proof is part of
+the live run below.
+
+### The replica ramp: 1 → 2 → 4 (runbook)
+
+Aggregate throughput is measured per stage with the W2-T9 dashboard scenario
+(4 report reads/iteration, warm cache) against the ALB, at a pinned replica
+floor: each stage redeploys with `-c minCapacity=N`, so auto-scaling scale-in
+holds exactly N replicas for the measurement. The runner
+(`bun tools/k6/ramp.mjs`) refuses to record a stage until ECS reports at
+least N tasks RUNNING — the receipt states "N replicas, **measured**", never
+"configured" — then `--report` fails unless per-stage throughput rose and no
+request failed.
+
+| Stage (minCapacity) | Replicas measured | reads/s | p95 | Failures |
+| ------------------- | ----------------- | ------- | --- | -------- |
+| 1                   | — pending AWS run | —       | —   | —        |
+| 2                   | — pending AWS run | —       | —   | —        |
+| 4                   | — pending AWS run | —       | —   | —        |
+
+This table is the one claim **not yet backed by a live AWS run**: it needs a
+deployed stack (AWS credentials on the operator side) and is filled by
+running the three `ramp.mjs` stages above with `BASE_URL` pointed at the
+ALB's DNS output. Every stage of the tooling — the bounded auto-scaling
+policies, the running-count gate, the receipt, the rising-throughput verdict —
+is implemented and template-tested; the run replaces the empty table (and this
+sentence) with numbers and the measured ceiling + bottleneck, superseding the
+laptop-rig extrapolation above.

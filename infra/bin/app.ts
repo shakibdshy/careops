@@ -17,7 +17,24 @@ if (targetFlag !== 'aws' && targetFlag !== 'floci') {
 }
 const target: DeployTarget = targetFlag;
 
-const desiredCount = Number(readFlag('desiredCount', 'CAREOPS_DESIRED_COUNT') ?? 1);
+// Auto-scaling bounds (W3-T3). minCapacity doubles as the k6-ramp lever: redeploy
+// -c minCapacity=N to hold N replicas for a ramp stage — desiredCount then
+// defaults to the floor, so `-c minCapacity=N` alone is a complete ramp stage.
+const minCapacity = Number(readFlag('minCapacity', 'CAREOPS_MIN_CAPACITY') ?? 1);
+const desiredCount = Number(readFlag('desiredCount', 'CAREOPS_DESIRED_COUNT') ?? minCapacity);
+const maxCapacity = Number(readFlag('maxCapacity', 'CAREOPS_MAX_CAPACITY') ?? 4);
+const boundsValid =
+  Number.isInteger(desiredCount) &&
+  Number.isInteger(minCapacity) &&
+  Number.isInteger(maxCapacity) &&
+  maxCapacity >= minCapacity &&
+  desiredCount >= minCapacity &&
+  desiredCount <= maxCapacity;
+if (!boundsValid) {
+  throw new Error(
+    `inconsistent replica bounds: desired=${desiredCount} min=${minCapacity} max=${maxCapacity} (integers, min ≤ desired ≤ max)`,
+  );
+}
 
 const imageTag = readFlag('imageTag', 'CAREOPS_IMAGE_TAG') ?? 'latest';
 
@@ -33,6 +50,8 @@ const region = process.env.CDK_DEFAULT_REGION;
 const props: CareOpsStackProps = {
   target,
   desiredCount,
+  minCapacity,
+  maxCapacity,
   imageTag,
   ...(account && region ? { env: { account, region } } : {}),
   ...(certificateArn ? { certificateArn } : {}),

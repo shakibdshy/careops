@@ -39,6 +39,10 @@ export interface CareOpsStackProps extends StackProps {
   readonly target: DeployTarget;
   /** API replica count. One for the tracer bullet; W3-T4 ramps it. */
   readonly desiredCount: number;
+  /** Auto-scaling floor (replicas). The k6-ramp lever: redeploy `-c minCapacity=N`. */
+  readonly minCapacity?: number;
+  /** Auto-scaling ceiling (replicas) for both target-tracking policies. */
+  readonly maxCapacity?: number;
   /** ECR image tag to deploy (the W3-T1 API image). */
   readonly imageTag: string;
   /** ACM certificate ARN. When set, the ALB serves HTTPS and redirects HTTP. */
@@ -168,7 +172,7 @@ export class CareOpsStack extends Stack {
         : `redis://${cache.attrRedisEndpointAddress}:${cache.attrRedisEndpointPort}`);
 
     const healthProbe =
-      "node -e \"fetch('http://127.0.0.1:3001/api/health')" +
+      `node -e "fetch('http://127.0.0.1:${API_PORT}${HEALTH_PATH}')` +
       '.then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"';
 
     taskDef.addContainer('api', {
@@ -280,6 +284,31 @@ export class CareOpsStack extends Stack {
     } else {
       addApiRoute(httpListener);
     }
+
+    // --- Auto-scaling: target tracking on CPU + ALB requests per target -----
+    // Placed after listener attachment: scaleOnRequestCount needs the target
+    // group's ALB resource label, which only exists once a listener references
+    // it. The scalable target owns DesiredCount once registered; `minCapacity`
+    // is the k6-ramp lever (redeploy -c minCapacity=N pins the floor — scale-in
+    // stops at min, so a stage holds exactly N replicas under load).
+    const scaling = this.service.autoScaleTaskCount({
+      minCapacity: props.minCapacity ?? props.desiredCount,
+      maxCapacity: props.maxCapacity ?? 4,
+    });
+    // 0.5 vCPU/task: CPU is the first exhausted resource under fan-out reads.
+    scaling.scaleOnCpuUtilization('ScaleOnCpu', {
+      targetUtilizationPercent: 60,
+      scaleOutCooldown: Duration.seconds(60),
+      scaleInCooldown: Duration.seconds(180),
+    });
+    // ALB request count per target covers the I/O-bound regime CPU misses
+    // (report cache hits keep CPU low while request pressure keeps rising).
+    scaling.scaleOnRequestCount('ScaleOnRequests', {
+      requestsPerTarget: 500,
+      targetGroup: this.targetGroup,
+      scaleOutCooldown: Duration.seconds(60),
+      scaleInCooldown: Duration.seconds(180),
+    });
 
     // --- Outputs -----------------------------------------------------------
     const scheme = props.certificateArn ? 'https' : 'http';

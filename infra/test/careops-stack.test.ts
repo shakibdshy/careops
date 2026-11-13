@@ -116,6 +116,68 @@ test('desired count is parameterized', () => {
   synth({ desiredCount: 4 }).hasResourceProperties('AWS::ECS::Service', { DesiredCount: 4 });
 });
 
+test('auto-scaling bounds are parameterized (minCapacity/maxCapacity)', () => {
+  const scalableTarget = (template: Template) =>
+    template.findResources('AWS::ApplicationAutoScaling::ScalableTarget') as Record<
+      string,
+      {
+        Properties: {
+          MinCapacity: number;
+          MaxCapacity: number;
+          ScalableDimension: string;
+          ServiceNamespace: string;
+        };
+      }
+    >;
+  const defaults = Object.values(scalableTarget(synth()));
+  assert.equal(defaults.length, 1, 'one scalable target for the API service');
+  assert.equal(defaults[0]?.Properties.MinCapacity, 1);
+  assert.equal(defaults[0]?.Properties.MaxCapacity, 4);
+  assert.equal(defaults[0]?.Properties.ScalableDimension, 'ecs:service:DesiredCount');
+  assert.equal(defaults[0]?.Properties.ServiceNamespace, 'ecs');
+
+  const ramped = Object.values(scalableTarget(synth({ minCapacity: 2, maxCapacity: 8 })));
+  assert.equal(ramped.length, 1, 'exactly one scalable target after ramp overrides');
+  assert.equal(ramped[0]?.Properties.MinCapacity, 2, 'k6 ramp stage pins the floor at minCapacity');
+  assert.equal(ramped[0]?.Properties.MaxCapacity, 8);
+});
+
+test('target-tracking policies scale on CPU and ALB requests per target', () => {
+  const policies = synth().findResources('AWS::ApplicationAutoScaling::ScalingPolicy') as Record<
+    string,
+    {
+      Properties: {
+        PolicyType: string;
+        TargetTrackingScalingPolicyConfiguration: {
+          TargetValue: number;
+          PredefinedMetricSpecification: { PredefinedMetricType: string; ResourceLabel?: unknown };
+        };
+      };
+    }
+  >;
+  const tracking = Object.values(policies).filter(
+    (policy) => policy.Properties.PolicyType === 'TargetTrackingScaling',
+  );
+  const metrics = tracking.map(
+    (policy) =>
+      policy.Properties.TargetTrackingScalingPolicyConfiguration.PredefinedMetricSpecification,
+  );
+  const types = metrics.map((spec) => spec.PredefinedMetricType).sort();
+  assert.deepEqual(types, ['ALBRequestCountPerTarget', 'ECSServiceAverageCPUUtilization']);
+  for (const policy of tracking) {
+    assert.ok(policy.Properties.TargetTrackingScalingPolicyConfiguration.TargetValue > 0);
+    // ALBRequestCountPerTarget must name the ALB+TG resource label; CPU needs none.
+    if (
+      policy.Properties.TargetTrackingScalingPolicyConfiguration.PredefinedMetricSpecification
+        .PredefinedMetricType === 'ALBRequestCountPerTarget'
+    ) {
+      assert.ok(
+        metrics.find((m) => m.PredefinedMetricType === 'ALBRequestCountPerTarget')?.ResourceLabel,
+      );
+    }
+  }
+});
+
 test('ALB is internet-facing', () => {
   synth().hasResourceProperties('AWS::ElasticLoadBalancingV2::LoadBalancer', {
     Scheme: 'internet-facing',
