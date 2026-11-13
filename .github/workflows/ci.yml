@@ -2,13 +2,15 @@ name: CI
 
 on:
   pull_request:
-  push:
-    branches: [main]
+  # Reusable by deploy.yml (W3-T5): merges to main run these gates through the
+  # deploy workflow — one full CI run per merge, not two.
+  workflow_call:
 
 jobs:
   ci:
     name: lint → typecheck → test → build
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     services:
       redis:
         image: redis:8-alpine
@@ -55,3 +57,13 @@ jobs:
 
       - name: Build
         run: bun run build
+
+      # PR safety (W3-T5): the stack must synthesize cleanly with no AWS
+      # credentials — env-agnostic synth, template asserted on disk. Deploys
+      # only ever happen on main (deploy.yml), never on a PR.
+      - name: CDK synth (env-agnostic, no credentials)
+        working-directory: infra
+        run: |
+          bunx cdk synth -c target=aws --quiet
+          test -f cdk.out/CareOpsStack.template.json
+          echo "template synthesized: $(wc -c < cdk.out/CareOpsStack.template.json) bytes"

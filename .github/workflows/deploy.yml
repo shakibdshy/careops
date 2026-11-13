@@ -1,0 +1,130 @@
+# Ship-by-merge (W3-T5, ADR-0012): on every merge to main, run the repo gates,
+# build + push BOTH images to ECR, `cdk deploy` the stack, then smoke-check the
+# live origin. AWS auth is GitHub OIDC — the workflow assumes a deploy role;
+# no static AWS access keys live in the repo or its secrets (see infra/README.md
+# "OIDC pipeline" for the one-time operator setup: identity provider, trust
+# policy, and the repo variables this workflow reads).
+#
+# Rollback = redeploy a previous image: run this workflow manually
+# (workflow_dispatch) with skip_build=true and image_tag=<previous sha>. The
+# tag still exists in ECR, so the stack rolls forward to the old image and the
+# smoke gate proves it healthy.
+
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Image tag to deploy. Defaults to the triggering commit sha; a previous sha = rollback.'
+        required: false
+        default: ''
+      skip_build:
+        description: 'Skip build+push and deploy an existing tag (rollback path).'
+        type: boolean
+        default: false
+
+# One deploy at a time; never cancel an in-flight deploy mid-stack.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  gates:
+    name: lint → typecheck → test → build → synth
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  deploy:
+    name: build → push → deploy → smoke
+    needs: gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      # OIDC: mint a short-lived token for the AWS deploy role. This is the
+      # ONLY AWS credential mechanism in the repo — no stored keys anywhere.
+      id-token: write
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      IMAGE_TAG: ${{ inputs.image_tag || github.sha }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # OIDC → STS → the operator-provisioned deploy role (vars.AWS_DEPLOY_ROLE_ARN).
+      - name: Configure AWS via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: careops-deploy-${{ github.run_id }}
+
+      - name: Registry login (ECR)
+        run: |
+          ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+          echo "ACCOUNT=$ACCOUNT" >> "$GITHUB_ENV"
+          aws ecr get-login-password --region "$AWS_REGION" \
+            | docker login --username AWS --password-stdin "$ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com"
+
+      - name: Build and push both images
+        if: ${{ inputs.skip_build != true }}
+        run: |
+          docker build -f apps/api/Dockerfile -t "careops-api:$IMAGE_TAG" .
+          docker build -f apps/web/Dockerfile -t "careops-web:$IMAGE_TAG" .
+          REGISTRY="$ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com"
+          docker tag "careops-api:$IMAGE_TAG"  "$REGISTRY/careops-api:$IMAGE_TAG"
+          docker tag "careops-web:$IMAGE_TAG"  "$REGISTRY/careops-web:$IMAGE_TAG"
+          docker push "$REGISTRY/careops-api:$IMAGE_TAG"
+          docker push "$REGISTRY/careops-web:$IMAGE_TAG"
+
+      - name: Deploy the stack
+        working-directory: infra
+        env:
+          # Certificate + domain are optional: set the repo variables for a
+          # real named deploy. They also pin the API's same-origin auth config.
+          ACM_CERT_ARN: ${{ vars.ACM_CERT_ARN }}
+          DOMAIN_NAME: ${{ vars.DOMAIN_NAME }}
+        run: |
+          ARGS=(-c target=aws -c imageTag="$IMAGE_TAG" -c webImageTag="$IMAGE_TAG")
+          if [ -n "$ACM_CERT_ARN" ] && [ -n "$DOMAIN_NAME" ]; then
+            ARGS+=(-c certificateArn="$ACM_CERT_ARN" -c domainName="$DOMAIN_NAME")
+          fi
+          bunx cdk deploy CareOpsStack "${ARGS[@]}" --require-approval never
+
+      - name: Resolve the deployed origin
+        run: |
+          APP_URL=$(aws cloudformation describe-stacks --stack-name CareOpsStack \
+            --query "Stacks[0].Outputs[?OutputKey=='AppUrl'].OutputValue" --output text)
+          echo "Deployed origin: $APP_URL"
+          echo "BASE_URL=$APP_URL" >> "$GITHUB_ENV"
+
+      # Post-deploy smoke (W3-T5): API health green through the edge, SSR HTML
+      # served + never cacheable, hashed assets immutable, /api/* stays the API.
+      - name: Post-deploy smoke
+        run: bun tools/smoke.mjs
+
+      - name: Deploy summary
+        if: always()
+        run: |
+          {
+            echo "### Deploy"
+            echo "| field | value |"
+            echo "| --- | --- |"
+            echo "| image tag | \`$IMAGE_TAG\` |"
+            echo "| origin | \`${BASE_URL:-n/a}\` |"
+            echo "| smoke | $([ "$BASE_URL" ] && echo ran || echo not-reached) |"
+            echo "| rollback hint | re-run this workflow with \`skip_build=true\`, \`image_tag=$IMAGE_TAG\` |"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -315,6 +315,83 @@ Expected: `{"status":"ok","service":"careops-api","mongo":"up","redis":"up"}` �
 confirms Atlas reachability, `redis: up` confirms ElastiCache. TLS terminates at CloudFront
 (the ALB is an HTTP-only origin, ADR-0012).
 
+## OIDC pipeline (W3-T5)
+
+`.github/workflows/deploy.yml` ships by merge: on every push to `main` it runs
+the repo gates (the reusable `ci.yml`), builds + pushes **both** images to ECR
+tagged with the commit sha, runs `cdk deploy`, and smoke-checks the live origin
+with `tools/smoke.mjs`. AWS auth is **GitHub OIDC only** — the workflow assumes
+a deploy role with a short-lived token; there are no static AWS keys in the
+repo, its secrets, or this documentation. PRs get the gates + an env-agnostic
+`cdk synth` and never deploy.
+
+### One-time operator setup
+
+1. **OIDC identity provider** (once per AWS account):
+
+   ```sh
+   aws iam create-open-id-connect-provider \
+     --url https://token.actions.githubusercontent.com \
+     --client-id-list sts.amazonaws.com
+   ```
+
+2. **Deploy role** with a trust policy scoped to this repo and branch:
+
+   ```json
+   {
+     "Version": "2012-10-17",
+     "Statement": [
+       {
+         "Effect": "Allow",
+         "Principal": {
+           "Federated": "arn:aws:iam::<ACCOUNT>:oidc-provider/token.actions.githubusercontent.com"
+         },
+         "Action": "sts:AssumeRoleWithWebIdentity",
+         "Condition": {
+           "StringEquals": {
+             "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+             "token.actions.githubusercontent.com:sub": [
+               "repo:shakibdshy/careops:ref:refs/heads/main",
+               "repo:shakibdshy/careops:environment:production"
+             ]
+           }
+         }
+       }
+     ]
+   }
+   ```
+
+   Attach the permissions the stack needs (ECR push, CloudFormation, ECS/EC2/
+   ELBv2/CloudFront/ElastiCache/Secrets Manager/Logs/Application Auto Scaling,
+   `iam:PassRole` for the task execution + task roles, S3 + DynamoDB for the
+   CDK bootstrap assets). The least-privilege set grows with the stack; scope
+   by resource where practical. Optional hardening: give the deploy job a
+   GitHub `environment: production` (deployment-protection rules, wait
+   timers) and add the matching `repo:…:environment:production` subject here.
+
+3. **Repository variables** (Settings → Secrets and variables → Actions →
+   Variables — none of these are secrets):
+
+   | Variable              | Example                         | Required | Meaning                                                  |
+   | --------------------- | ------------------------------- | -------- | -------------------------------------------------------- |
+   | `AWS_REGION`          | `us-east-1`                     | yes      | Deploy region                                            |
+   | `AWS_DEPLOY_ROLE_ARN` | `arn:aws:iam::<ACCOUNT>:role/…` | yes      | Role the workflow assumes via OIDC                       |
+   | `ACM_CERT_ARN`        | `arn:aws:acm:us-east-1:…`       | no       | Viewer certificate (must be in us-east-1)                |
+   | `DOMAIN_NAME`         | `app.example.com`               | no       | Custom domain; with the cert, also pins same-origin auth |
+
+   Without `ACM_CERT_ARN` + `DOMAIN_NAME` the deploy serves the CloudFront
+   default domain and same-origin sign-in is rejected (see "Deploy to AWS",
+   prerequisite 2). Set both for a real app deploy.
+
+### Rollback
+
+Images are immutable per sha and never pruned by the pipeline. To roll back,
+run **Deploy** manually (workflow_dispatch) with `skip_build=true` and
+`image_tag=<previous sha>` — the workflow skips build/push, redeploys the old
+tag, and the smoke gate must pass. There is no automatic rollback on smoke
+failure: the smoke gate fails loudly instead (a failing health check usually
+means the data plane, not the image, needs attention).
+
 ## Secrets
 
 The task definition references secrets by ARN (`Secrets`/`ValueFrom`), never plaintext
