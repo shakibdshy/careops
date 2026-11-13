@@ -4,7 +4,7 @@ In-repo CDK app (TypeScript) that deploys CareOps to AWS and to the [Floci](http
 local emulator from the **same stack**. Architecture and trade-offs are recorded in
 [ADR-0012](../docs/adr/0012-aws-deployment-architecture.md).
 
-This workspace currently ships the **W3-T2 tracer bullet**: one stateless API Fargate replica
+This workspace currently ships the **W3-T4 two-tier stack**: one stateless API Fargate replica
 behind an internet-facing ALB (`/api/*` → API, stickiness off, health check `/api/health`),
 ElastiCache Redis, an ECR repository, runtime secrets, and CloudWatch logs. Later Week-3
 tickets add the SSR web tier behind the same ALB, CloudFront, and target-tracking auto-scaling.
@@ -66,7 +66,7 @@ All commands below run from `infra/`.
 | `webMinCapacity`  | `CAREOPS_WEB_MIN_CAPACITY`  | `1`      | Web auto-scaling floor                                                        |
 | `webMaxCapacity`  | `CAREOPS_WEB_MAX_CAPACITY`  | `4`      | Web auto-scaling ceiling                                                      |
 | `domainName`      | `CAREOPS_DOMAIN_NAME`       | unset    | Custom domain for CloudFront (+ pins the API's same-origin auth config)       |
-| `certificateArn`  | `CAREOPS_CERTIFICATE_ARN`   | unset    | ACM cert; when set, ALB serves HTTPS + redirects HTTP                         |
+| `certificateArn`  | `CAREOPS_CERTIFICATE_ARN`   | unset    | ACM cert (us-east-1) for the CloudFront viewer certificate                    |
 | `redisUrl`        | `CAREOPS_REDIS_URL`         | derived  | override the Redis URL (defaults: ElastiCache for `aws`, compose for `floci`) |
 
 `synth` and `test` are **env-agnostic**: with no `CDK_DEFAULT_ACCOUNT`/`CDK_DEFAULT_REGION` the
@@ -112,7 +112,7 @@ It proves same-origin sign-in (cookie first-party, no CORS), booking through
 the UI, dashboard in light + dark, and the never-cacheable contract
 (`Cache-Control: no-store` on every SSR response; content follows the
 session). On a real deploy the same proof runs unchanged against the
-CloudFront/ALB domain (`ORIGIN_URL`/`ORIGIN_PORT`).
+CloudFront domain: `ORIGIN_URL=https://<domain> bunx playwright test -c playwright.origin.config.ts`.
 
 ## Deploy to Floci (local, no AWS account)
 
@@ -261,7 +261,10 @@ ElastiCache, derived automatically.
   `-c certificateArn=… -c domainName=app.example.com` — this also pins the API's
   `BETTER_AUTH_URL`/`BETTER_AUTH_TRUSTED_ORIGINS` to `https://app.example.com` so same-origin
   cookie auth works on the deployed origin.
-- Docker, to build and push the API image.
+  Without `domainName`, the edge serves the default `*.cloudfront.net` domain and NO auth origin
+  is pinned (the domain is only knowable after creation) — sign-in through the edge will be
+  rejected. Default-domain mode is for tracer-bullet checks; a real app deploy sets cert + domain.
+- Docker, to build and push both images (API + web).
 
 ### 2. Bootstrap and deploy at zero replicas
 
@@ -270,7 +273,7 @@ bunx cdk bootstrap aws://<ACCOUNT>/<REGION>
 bunx cdk deploy CareOpsStack -c target=aws -c desiredCount=0 -c minCapacity=0 -c webDesiredCount=0 -c webMinCapacity=0 -c imageTag=latest -c webImageTag=latest --require-approval never
 ```
 
-Note the `EcrRepositoryUri`, `AlbDnsName`, and secret ARNs in the outputs.
+Note the `AppUrl` (the CloudFront domain — the app entry), `EcrRepositoryUri`, `WebEcrRepositoryUri`, and secret ARNs in the outputs.
 
 ### 3. Build and push the image to real ECR
 
@@ -279,9 +282,9 @@ docker build -f apps/api/Dockerfile -t careops-api:latest .
 docker build -f apps/web/Dockerfile -t careops-web:latest .
 aws ecr get-login-password --region <REGION> \
   | docker login --username AWS --password-stdin <ACCOUNT>.dkr.ecr.<REGION>.amazonaws.com
-docker tag careops-api:latest <ApiEcrRepositoryUri>:latest
+docker tag careops-api:latest <EcrRepositoryUri>:latest
 docker tag careops-web:latest <WebEcrRepositoryUri>:latest
-docker push <ApiEcrRepositoryUri>:latest
+docker push <EcrRepositoryUri>:latest
 docker push <WebEcrRepositoryUri>:latest
 ```
 
@@ -302,14 +305,15 @@ aws secretsmanager put-secret-value --secret-id careops/smtp-url \
 ### 5. Scale up (with TLS) and verify
 
 ```sh
-bunx cdk deploy CareOpsStack -c target=aws -c desiredCount=1 -c imageTag=latest \
-  -c certificateArn=<ACM_ARN> --require-approval never
-curl https://<AlbDnsName>/api/health
+bunx cdk deploy CareOpsStack -c target=aws -c desiredCount=1 -c minCapacity=1 \
+  -c webDesiredCount=1 -c webMinCapacity=1 -c imageTag=latest -c webImageTag=latest \
+  -c certificateArn=<ACM_ARN> -c domainName=<DOMAIN> --require-approval never
+curl <AppUrl>/api/health   # via the edge (AppUrl output)
 ```
 
 Expected: `{"status":"ok","service":"careops-api","mongo":"up","redis":"up"}` — `mongo: up`
-confirms Atlas reachability, `redis: up` confirms ElastiCache. With a certificate the ALB serves
-HTTPS and redirects HTTP; without one, probe `http://<AlbDnsName>/api/health`.
+confirms Atlas reachability, `redis: up` confirms ElastiCache. TLS terminates at CloudFront
+(the ALB is an HTTP-only origin, ADR-0012).
 
 ## Secrets
 
@@ -323,7 +327,8 @@ an inline secret value in the template.
 
 `bun run test` synthesizes the stack offline and asserts the deploy contract:
 
-- `/api/*` forwards to the API target group; default action is 404.
+- `/api/*` (priority 10) forwards to the API target group; the default action forwards
+  everything else (`/*`) to the web SSR target group — same-origin on one listener.
 - Target-group stickiness is disabled; health check is `/api/health` on the API port.
 - Credentials resolve from Secrets Manager at runtime; no plaintext secret in the task
   definition and no inline secret value in the template.

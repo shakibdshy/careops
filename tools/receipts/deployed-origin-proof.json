@@ -1,6 +1,6 @@
 {
   "scenario": "deployed-origin",
-  "generatedAt": "2026-11-13T13:53:48.891Z",
+  "generatedAt": "2026-11-13T14:22:21.804Z",
   "origin": "http://localhost:8080 (alb-sim: /* -> web, /api/* -> api)",
   "containers": {
     "api": "careops-api:local",

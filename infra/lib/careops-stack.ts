@@ -62,7 +62,7 @@ export interface CareOpsStackProps extends StackProps {
   readonly webMinCapacity?: number;
   /** Web auto-scaling ceiling. */
   readonly webMaxCapacity?: number;
-  /** ACM certificate ARN. When set, the ALB serves HTTPS and redirects HTTP. */
+  /** ACM certificate ARN (us-east-1) for the CloudFront viewer certificate. */
   readonly certificateArn?: string;
   /** Custom domain for the CloudFront distribution (requires certificateArn). */
   readonly domainName?: string;

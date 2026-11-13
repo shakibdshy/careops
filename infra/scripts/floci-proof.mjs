@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-// Floci deploy proof (ADR-0012, W3-T2). Two steps the CDK deploy leaves to the
-// operator: populate the runtime secrets, then verify the API service reaches
-// steady state with a green /api/health. Run from infra/ after `cdk deploy`.
+// Floci deploy proof (ADR-0012, W3-T2 + W3-T4). Two steps the CDK deploy leaves
+// to the operator: populate the runtime secrets, then verify BOTH services (API
+// and web SSR) reach steady state with green in-task health. Run from infra/
+// after `cdk deploy`.
 //
 //   node scripts/floci-proof.mjs secrets   # put Mongo/SMTP/auth secret values
 //   node scripts/floci-proof.mjs verify    # wait for steady + probe health
@@ -126,25 +127,32 @@ async function probeHealth(client, serviceName, port, path, assertOk) {
 // /api/health (mongo/redis connectivity) and the web SSR server on /healthz.
 async function verify() {
   const client = new ECSClient(config);
-  for (const [match, tier] of [
-    [SERVICE_MATCH, 'api'],
-    ['WebService', 'web'],
-  ]) {
-    const service = await findService(client, match);
-    console.log(`service: ${service.serviceName} (${tier})`);
-    await waitForSteady(client, service.serviceName);
-    if (tier === 'api') {
-      await probeHealth(client, service.serviceName, API_PORT, '/api/health', (body) => {
+  const tiers = [
+    {
+      match: SERVICE_MATCH,
+      port: API_PORT,
+      path: '/api/health',
+      assert: (body) => {
         const health = JSON.parse(body);
         if (health.status !== 'ok' || health.mongo !== 'up' || health.redis !== 'up') {
           throw new Error(`API health not green: ${body}`);
         }
-      });
-    } else {
-      await probeHealth(client, service.serviceName, WEB_PORT, '/healthz', (body) => {
+      },
+    },
+    {
+      match: 'WebService',
+      port: WEB_PORT,
+      path: '/healthz',
+      assert: (body) => {
         if (body.trim() !== 'ok') throw new Error(`web health not green: ${body}`);
-      });
-    }
+      },
+    },
+  ];
+  for (const tier of tiers) {
+    const service = await findService(client, tier.match);
+    console.log(`service: ${service.serviceName} (${tier.path})`);
+    await waitForSteady(client, service.serviceName);
+    await probeHealth(client, service.serviceName, tier.port, tier.path, tier.assert);
   }
   console.log(
     'Floci proof OK: API + web SSR replicas steady with green health on compose Mongo/Redis.',

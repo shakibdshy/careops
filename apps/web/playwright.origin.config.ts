@@ -10,13 +10,15 @@ import { defineConfig } from '@playwright/test';
  *   bun tools/prove-origin.mjs   # boots the harness, then runs this config
  */
 const PORT = Number(process.env.ORIGIN_PORT ?? 8080);
+// Local harness: the alb-sim origin. A real deploy: ORIGIN_URL=https://<domain>.
+const BASE_URL = process.env.ORIGIN_URL ?? `http://localhost:${PORT}`;
 
 export default defineConfig({
   testDir: './e2e',
   testMatch: /origin\.spec\.ts/,
   timeout: 60_000,
   use: {
-    baseURL: `http://localhost:${PORT}`,
+    baseURL: BASE_URL,
     trace: 'retain-on-failure',
   },
   reporter: 'list',

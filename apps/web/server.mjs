@@ -45,12 +45,13 @@ const MIME = {
 
 const IMMUTABLE = 'public, max-age=31536000, immutable';
 
-function sendFile(res, filePath) {
+function sendFile(res, filePath, cacheControl = IMMUTABLE) {
   const type = MIME[extname(filePath).toLowerCase()] ?? 'application/octet-stream';
   res.writeHead(200, {
     'Content-Type': type,
     'Content-Length': statSync(filePath).size,
-    'Cache-Control': IMMUTABLE,
+    // Only /assets/* is content-hashed; anything else (favicon) gets a short cache.
+    'Cache-Control': cacheControl,
   });
   createReadStream(filePath).pipe(res);
 }
@@ -73,10 +74,10 @@ const server = createServer(async (req, res) => {
       return;
     }
 
-    const file =
-      req.method === 'GET' || req.method === 'HEAD' ? staticFile(req.url.split('?')[0]) : null;
+    const urlPath = req.url.split('?')[0];
+    const file = req.method === 'GET' || req.method === 'HEAD' ? staticFile(urlPath) : null;
     if (file) {
-      sendFile(res, file);
+      sendFile(res, file, urlPath.startsWith('/assets/') ? IMMUTABLE : 'public, max-age=86400');
       return;
     }
 
@@ -89,11 +90,19 @@ const server = createServer(async (req, res) => {
     });
     const response = await handler.fetch(request);
 
-    const headers = Object.fromEntries(response.headers);
+    // Multi-value headers matter: Set-Cookie must survive as separate cookies,
+    // so single-valued headers are copied one-by-one and Set-Cookie is
+    // re-attached as an array (Object.fromEntries would comma-join them).
+    const headers = {};
+    for (const [key, value] of response.headers) {
+      if (key !== 'set-cookie') headers[key] = value;
+    }
     // SSR/dynamic must never be cacheable — by the edge, a proxy, or anyone.
     if ((headers['content-type'] ?? '').includes('text/html')) {
       headers['cache-control'] = 'no-store';
     }
+    const cookies = response.headers.getSetCookie();
+    if (cookies.length > 0) headers['set-cookie'] = cookies;
     res.writeHead(response.status, headers);
     if (response.body) {
       const reader = response.body.getReader();
@@ -105,8 +114,15 @@ const server = createServer(async (req, res) => {
     }
     res.end();
   } catch (error) {
+    const message = `web server error: ${error instanceof Error ? error.message : String(error)}`;
+    if (res.headersSent) {
+      // Mid-stream failure: the status line is already out; cut the socket so
+      // the client sees a truncated response rather than a corrupted 200.
+      res.destroy();
+      return;
+    }
     res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
-    res.end(`web server error: ${error instanceof Error ? error.message : String(error)}`);
+    res.end(message);
   }
 });
 
