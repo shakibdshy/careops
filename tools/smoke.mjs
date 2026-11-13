@@ -21,9 +21,13 @@ const check = (name, ok, detail = '') => {
   if (!ok) failures.push(name);
 };
 
-const get = async (path, init) => {
-  const res = await fetch(`${BASE_URL}${path}`, {
+const TIMEOUT_MS = 15_000;
+const get = async (pathOrUrl, init) => {
+  // Absolute URLs pass through (CDN-hosted assets); paths join the origin.
+  const url = pathOrUrl.startsWith('http') ? pathOrUrl : `${BASE_URL}${pathOrUrl}`;
+  const res = await fetch(url, {
     redirect: 'manual',
+    signal: AbortSignal.timeout(TIMEOUT_MS),
     ...init,
   }).catch(() => null);
   return res;
@@ -59,10 +63,12 @@ const homeCache = home?.headers.get('cache-control') ?? '';
 check('GET / → Cache-Control: no-store', homeCache.includes('no-store'), homeCache);
 
 // 3. A hashed asset referenced by the SSR shell is served with immutable cache.
-const assetPath = homeBody?.match(/\/assets\/[^"']+\.js/)?.[0];
+// Match relative OR absolute (CDN) asset URLs; absolute ones pass through get().
+const assetPath = homeBody?.match(
+  /https?:\/\/[^"']+\/assets\/[^"']+\.js|\/assets\/[^"']+\.js/,
+)?.[0];
 if (!assetPath) {
-  failures.push('no /assets/*.js reference found in the SSR shell');
-  console.log('  ✗ no /assets/*.js reference found in the SSR shell');
+  check('no /assets/*.js reference found in the SSR shell', false);
 } else {
   const asset = await get(assetPath);
   const assetCache = asset?.headers.get('cache-control') ?? '';
@@ -96,7 +102,8 @@ check(
 );
 check(
   'unauthenticated /dashboard does not leak an authed shell (content differs from /)',
-  !dashBody || dashBody !== homeBody,
+  dashBody.length > 0 && dashBody !== homeBody,
+  `anon body ${dashBody.length} bytes`,
 );
 
 if (failures.length > 0) {

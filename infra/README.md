@@ -365,7 +365,9 @@ repo, its secrets, or this documentation. PRs get the gates + an env-agnostic
    ELBv2/CloudFront/ElastiCache/Secrets Manager/Logs/Application Auto Scaling,
    `iam:PassRole` for the task execution + task roles, S3 + DynamoDB for the
    CDK bootstrap assets). The least-privilege set grows with the stack; scope
-   by resource where practical.
+   by resource where practical. Optional hardening: give the deploy job a
+   GitHub `environment: production` (deployment-protection rules, wait
+   timers) and add the matching `repo:…:environment:production` subject here.
 
 3. **Repository variables** (Settings → Secrets and variables → Actions →
    Variables — none of these are secrets):

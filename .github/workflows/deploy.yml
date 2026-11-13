@@ -45,6 +45,7 @@ jobs:
     name: build → push → deploy → smoke
     needs: gates
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     permissions:
       contents: read
       # OIDC: mint a short-lived token for the AWS deploy role. This is the

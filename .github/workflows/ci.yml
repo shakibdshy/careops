@@ -2,15 +2,15 @@ name: CI
 
 on:
   pull_request:
-  push:
-    branches: [main]
-  # Reusable by deploy.yml (W3-T5): the deploy job runs these gates first.
+  # Reusable by deploy.yml (W3-T5): merges to main run these gates through the
+  # deploy workflow — one full CI run per merge, not two.
   workflow_call:
 
 jobs:
   ci:
     name: lint → typecheck → test → build
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     services:
       redis:
         image: redis:8-alpine
