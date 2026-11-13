@@ -21,7 +21,20 @@ describe('validateEnv', () => {
       smtpUrl: 'smtp://localhost:1025',
       mailFrom: 'CareOps <no-reply@careops.local>',
       notificationsQueueName: 'notifications',
+      trustedOrigins: [],
     });
+  });
+
+  it('parses the same-origin deploy settings (BETTER_AUTH_URL + trusted origins)', () => {
+    const config = validateEnv({
+      ...validEnv,
+      BETTER_AUTH_URL: 'https://app.example.com',
+      BETTER_AUTH_TRUSTED_ORIGINS: 'https://app.example.com, https://alt.example.com ,',
+    });
+    expect(config.betterAuthUrl).toBe('https://app.example.com');
+    expect(config.trustedOrigins).toEqual(['https://app.example.com', 'https://alt.example.com']);
+    // Absent by default: no invented origin, and no `undefined` key either.
+    expect('betterAuthUrl' in validateEnv(validEnv)).toBe(false);
   });
 
   it('defaults SMTP, mail-from, and queue name for self-contained boot', () => {

@@ -16,6 +16,13 @@ const envSchema = z.object({
   // BullMQ queue name. Overridden per e2e suite so parallel workers never
   // cross-process each other's jobs against the wrong database.
   NOTIFICATIONS_QUEUE_NAME: z.string().min(1).default('notifications'),
+  // Same-origin deployment (W3-T4): the public app origin (CloudFront/ALB
+  // domain). Drives better-auth's cookie policy — an https origin yields
+  // Secure cookies; an http origin (local proofs) yields non-Secure ones.
+  BETTER_AUTH_URL: z.string().min(1).optional(),
+  // Comma-separated extra origins better-auth may receive signed-in requests
+  // from. Production defaults to none; the deploy sets it to the app origin.
+  BETTER_AUTH_TRUSTED_ORIGINS: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -30,6 +37,8 @@ export type AppConfig = {
   smtpUrl: string;
   mailFrom: string;
   notificationsQueueName: string;
+  betterAuthUrl?: string;
+  trustedOrigins: string[];
 };
 
 export class EnvValidationError extends Error {
@@ -56,6 +65,12 @@ export function validateEnv(raw: Record<string, string | undefined>): AppConfig 
     smtpUrl: result.data.SMTP_URL,
     mailFrom: result.data.MAIL_FROM,
     notificationsQueueName: result.data.NOTIFICATIONS_QUEUE_NAME,
+    // Spread-guard, not `| undefined`: exactOptionalPropertyTypes is on.
+    ...(result.data.BETTER_AUTH_URL ? { betterAuthUrl: result.data.BETTER_AUTH_URL } : {}),
+    trustedOrigins: (result.data.BETTER_AUTH_TRUSTED_ORIGINS ?? '')
+      .split(',')
+      .map((origin) => origin.trim())
+      .filter((origin) => origin.length > 0),
   };
 }
 

@@ -26,6 +26,9 @@ export default tseslint.config(
       'tools/**',
       // Floci deploy-proof harness (W3-T2): standalone node .mjs, no tsconfig coverage — same rationale as tools/.
       'infra/scripts/**',
+      // Production SSR entry (W3-T4): standalone node .mjs run by the web
+      // container, not Vite-compiled app code — same rationale as tools/.
+      'apps/web/server.mjs',
     ],
   },
   eslint.configs.recommended,

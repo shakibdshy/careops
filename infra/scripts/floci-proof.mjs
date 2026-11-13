@@ -29,6 +29,7 @@ const CLUSTER = process.env.CAREOPS_CLUSTER ?? 'careops';
 const SERVICE_MATCH = process.env.CAREOPS_SERVICE_MATCH ?? 'ApiService';
 const DATA_HOST = process.env.CAREOPS_DATA_HOST ?? 'host.docker.internal';
 const API_PORT = Number(process.env.CAREOPS_API_PORT ?? 3001);
+const WEB_PORT = Number(process.env.CAREOPS_WEB_PORT ?? 3000);
 const credentials = {
   accessKeyId: process.env.AWS_ACCESS_KEY_ID ?? 'test',
   secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY ?? 'test',
@@ -54,19 +55,19 @@ async function populateSecrets() {
   }
 }
 
-async function findService(client) {
+async function findService(client, match = SERVICE_MATCH) {
   const { serviceArns } = await client.send(new ListServicesCommand({ cluster: CLUSTER }));
   if (!serviceArns?.length) throw new Error(`no ECS services in cluster ${CLUSTER}`);
   const { services } = await client.send(
     new DescribeServicesCommand({ cluster: CLUSTER, services: serviceArns }),
   );
-  const matches = (services ?? []).filter((s) => s.serviceName?.includes(SERVICE_MATCH));
+  const matches = (services ?? []).filter((s) => s.serviceName?.includes(match));
   if (matches.length === 0) {
-    throw new Error(`no ECS service matching "${SERVICE_MATCH}" in cluster ${CLUSTER}`);
+    throw new Error(`no ECS service matching "${match}" in cluster ${CLUSTER}`);
   }
   if (matches.length > 1) {
     throw new Error(
-      `${matches.length} ECS services match "${SERVICE_MATCH}" — narrow it with CAREOPS_SERVICE_MATCH`,
+      `${matches.length} ECS services match "${match}" — narrow it with CAREOPS_SERVICE_MATCH`,
     );
   }
   return matches[0];
@@ -100,7 +101,7 @@ async function waitForSteady(client, serviceName) {
   }
 }
 
-async function probeHealth(client, serviceName) {
+async function probeHealth(client, serviceName, port, path, assertOk) {
   const { taskArns } = await client.send(new ListTasksCommand({ cluster: CLUSTER, serviceName }));
   if (!taskArns?.length) throw new Error('no running tasks');
   const { tasks } = await client.send(
@@ -113,25 +114,40 @@ async function probeHealth(client, serviceName) {
       `task not running (lastStatus=${task?.lastStatus}, stoppedReason=${task?.stoppedReason ?? '-'})`,
     );
   }
-  const probe = `fetch('http://127.0.0.1:${API_PORT}/api/health').then(r=>r.text()).then(t=>process.stdout.write(t)).catch(e=>{process.stderr.write(String(e));process.exit(1)})`;
+  const probe = `fetch('http://127.0.0.1:${port}${path}').then(r=>r.text()).then(t=>process.stdout.write(t)).catch(e=>{process.stderr.write(String(e));process.exit(1)})`;
   const body = execFileSync('docker', ['exec', container.runtimeId, 'node', '-e', probe], {
     encoding: 'utf8',
   });
-  const health = JSON.parse(body);
-  if (health.status !== 'ok' || health.mongo !== 'up' || health.redis !== 'up') {
-    throw new Error(`health not green: ${body}`);
-  }
+  assertOk(body);
   console.log(`health: ${body.trim()}`);
 }
 
+// Both tiers must reach steady state with green in-task health: the API on
+// /api/health (mongo/redis connectivity) and the web SSR server on /healthz.
 async function verify() {
   const client = new ECSClient(config);
-  const service = await findService(client);
-  console.log(`service: ${service.serviceName}`);
-  await waitForSteady(client, service.serviceName);
-  await probeHealth(client, service.serviceName);
+  for (const [match, tier] of [
+    [SERVICE_MATCH, 'api'],
+    ['WebService', 'web'],
+  ]) {
+    const service = await findService(client, match);
+    console.log(`service: ${service.serviceName} (${tier})`);
+    await waitForSteady(client, service.serviceName);
+    if (tier === 'api') {
+      await probeHealth(client, service.serviceName, API_PORT, '/api/health', (body) => {
+        const health = JSON.parse(body);
+        if (health.status !== 'ok' || health.mongo !== 'up' || health.redis !== 'up') {
+          throw new Error(`API health not green: ${body}`);
+        }
+      });
+    } else {
+      await probeHealth(client, service.serviceName, WEB_PORT, '/healthz', (body) => {
+        if (body.trim() !== 'ok') throw new Error(`web health not green: ${body}`);
+      });
+    }
+  }
   console.log(
-    'Floci proof OK: one API replica steady with green /api/health on compose Mongo/Redis.',
+    'Floci proof OK: API + web SSR replicas steady with green health on compose Mongo/Redis.',
   );
 }
 

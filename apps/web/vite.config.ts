@@ -9,6 +9,10 @@ import tailwindcss from '@tailwindcss/vite';
 
 const config = defineConfig({
   resolve: { tsconfigPaths: true },
+  // Bundle server-side dependencies into dist/server so the production image
+  // ships no node_modules at all — the SSR handler is the only runtime code
+  // (W3-T4 web container: slim Node + dist + server.mjs).
+  ssr: { noExternal: true },
   server: {
     proxy: {
       '/api': {

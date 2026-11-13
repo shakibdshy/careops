@@ -48,21 +48,26 @@ All commands below run from `infra/`.
 | `bun run diff`                       | `cdk diff` against the deployed stack                                                |
 | `bun run destroy`                    | `cdk destroy`                                                                        |
 | `bun run floci:secrets`              | populate the three runtime secrets in Floci                                          |
-| `bun run floci:verify`               | wait for the service to reach steady state, then probe `/api/health`                 |
+| `bun run floci:verify`               | wait for BOTH services (API + web SSR) to reach steady state, probe in-task health   |
 
 ### Context flags
 
 `bin/app.ts` reads these from CDK context (`-c key=value`) or the matching `CAREOPS_*` env var:
 
-| Flag             | Env fallback              | Default  | Meaning                                                                       |
-| ---------------- | ------------------------- | -------- | ----------------------------------------------------------------------------- |
-| `target`         | `CAREOPS_DEPLOY_TARGET`   | `aws`    | `aws` or `floci`                                                              |
-| `desiredCount`   | `CAREOPS_DESIRED_COUNT`   | `1`      | API replica count                                                             |
-| `minCapacity`    | `CAREOPS_MIN_CAPACITY`    | `1`      | Auto-scaling floor — the k6-ramp stage lever                                  |
-| `maxCapacity`    | `CAREOPS_MAX_CAPACITY`    | `4`      | Auto-scaling ceiling for both target-tracking policies                        |
-| `imageTag`       | `CAREOPS_IMAGE_TAG`       | `latest` | ECR image tag to deploy                                                       |
-| `certificateArn` | `CAREOPS_CERTIFICATE_ARN` | unset    | ACM cert; when set, ALB serves HTTPS + redirects HTTP                         |
-| `redisUrl`       | `CAREOPS_REDIS_URL`       | derived  | override the Redis URL (defaults: ElastiCache for `aws`, compose for `floci`) |
+| Flag              | Env fallback                | Default  | Meaning                                                                       |
+| ----------------- | --------------------------- | -------- | ----------------------------------------------------------------------------- |
+| `target`          | `CAREOPS_DEPLOY_TARGET`     | `aws`    | `aws` or `floci`                                                              |
+| `desiredCount`    | `CAREOPS_DESIRED_COUNT`     | `1`      | API replica count                                                             |
+| `minCapacity`     | `CAREOPS_MIN_CAPACITY`      | `1`      | Auto-scaling floor — the k6-ramp stage lever                                  |
+| `maxCapacity`     | `CAREOPS_MAX_CAPACITY`      | `4`      | Auto-scaling ceiling for both target-tracking policies                        |
+| `imageTag`        | `CAREOPS_IMAGE_TAG`         | `latest` | ECR image tag to deploy (API)                                                 |
+| `webImageTag`     | `CAREOPS_WEB_IMAGE_TAG`     | `latest` | ECR image tag for the web SSR image                                           |
+| `webDesiredCount` | `CAREOPS_WEB_DESIRED_COUNT` | floor    | Web SSR replica count (defaults to `webMinCapacity`)                          |
+| `webMinCapacity`  | `CAREOPS_WEB_MIN_CAPACITY`  | `1`      | Web auto-scaling floor                                                        |
+| `webMaxCapacity`  | `CAREOPS_WEB_MAX_CAPACITY`  | `4`      | Web auto-scaling ceiling                                                      |
+| `domainName`      | `CAREOPS_DOMAIN_NAME`       | unset    | Custom domain for CloudFront (+ pins the API's same-origin auth config)       |
+| `certificateArn`  | `CAREOPS_CERTIFICATE_ARN`   | unset    | ACM cert; when set, ALB serves HTTPS + redirects HTTP                         |
+| `redisUrl`        | `CAREOPS_REDIS_URL`         | derived  | override the Redis URL (defaults: ElastiCache for `aws`, compose for `floci`) |
 
 `synth` and `test` are **env-agnostic**: with no `CDK_DEFAULT_ACCOUNT`/`CDK_DEFAULT_REGION` the
 stack uses placeholder AZs and needs no credentials. A concrete env is set only when the CDK
@@ -91,6 +96,23 @@ Each `--stage N` run first describes the ECS service and **fails if fewer than
 N replicas are RUNNING** — the receipt records "N replicas, measured", never
 "N replicas, configured". Point `BASE_URL` at the ALB DNS output. The same
 runner works against Floci (`AWS_ENDPOINT_URL=http://localhost:4566`).
+
+### Deployed-origin browser proof (W3-T4)
+
+The web SSR tier ships as `apps/web/Dockerfile` + `apps/web/server.mjs`: the
+Vite-built SSR handler plus hashed static assets under one Node process,
+non-root, zero runtime dependencies. Locally, the full origin contract is
+proven against the PRODUCTION containers behind an ALB-shaped proxy:
+
+```sh
+bun tools/prove-origin.mjs   # boots api+web images + alb-sim, runs Playwright
+```
+
+It proves same-origin sign-in (cookie first-party, no CORS), booking through
+the UI, dashboard in light + dark, and the never-cacheable contract
+(`Cache-Control: no-store` on every SSR response; content follows the
+session). On a real deploy the same proof runs unchanged against the
+CloudFront/ALB domain (`ORIGIN_URL`/`ORIGIN_PORT`).
 
 ## Deploy to Floci (local, no AWS account)
 
@@ -131,12 +153,13 @@ not the compose network, so they reach the data plane through the host gateway
 `host.docker.internal` (OrbStack/Docker Desktop). The stack bakes this as the `floci` Redis
 default, and `floci:secrets` writes the Mongo/SMTP URLs with the same host.
 
-### 3. Build the API image
+### 3. Build both images
 
-From the repo root (the Dockerfile builds the workspace, so the context is the root):
+From the repo root (the Dockerfiles build the workspace, so the context is the root):
 
 ```sh
 docker build -f apps/api/Dockerfile -t careops-api:local .
+docker build -f apps/web/Dockerfile -t careops-web:local .
 ```
 
 ### 4. Point the toolchain at Floci
@@ -158,7 +181,7 @@ would fail before the image and secret values exist.
 
 ```sh
 bunx cdk bootstrap aws://000000000000/us-east-1
-bunx cdk deploy CareOpsStack -c target=floci -c desiredCount=0 -c minCapacity=0 -c imageTag=local --require-approval never
+bunx cdk deploy CareOpsStack -c target=floci -c desiredCount=0 -c minCapacity=0 -c webDesiredCount=0 -c webMinCapacity=0 -c imageTag=local -c webImageTag=local --require-approval never
 ```
 
 `-c minCapacity=0` matters: the auto-scaling bounds enforce `min ≤ desired ≤ max`
@@ -175,8 +198,10 @@ to `insecure-registries`.
 
 ```sh
 docker login -u AWS -p floci 000000000000.dkr.ecr.us-east-1.localhost:4566
-docker tag careops-api:local 000000000000.dkr.ecr.us-east-1.localhost:4566/careops-api:local
-docker push 000000000000.dkr.ecr.us-east-1.localhost:4566/careops-api:local
+for img in careops-api careops-web; do
+  docker tag $img:local 000000000000.dkr.ecr.us-east-1.localhost:4566/$img:local
+  docker push 000000000000.dkr.ecr.us-east-1.localhost:4566/$img:local
+done
 ```
 
 ### 7. Populate the runtime secrets
@@ -189,10 +214,10 @@ Writes `careops/mongodb-uri` (compose Mongo via `host.docker.internal`, `directC
 `careops/smtp-url` (compose Mailpit), and a freshly generated `careops/better-auth-secret`. The
 script logs only each secret's name, version, and length — never its value.
 
-### 8. Scale to one replica and verify
+### 8. Scale to one replica per tier and verify
 
 ```sh
-bunx cdk deploy CareOpsStack -c target=floci -c desiredCount=1 -c minCapacity=1 -c imageTag=local --require-approval never
+bunx cdk deploy CareOpsStack -c target=floci -c desiredCount=1 -c minCapacity=1 -c webDesiredCount=1 -c webMinCapacity=1 -c imageTag=local -c webImageTag=local --require-approval never
 bun run floci:verify
 ```
 
@@ -210,6 +235,10 @@ Floci proof OK: one API replica steady with green /api/health on compose Mongo/R
 - **The ALB is metadata-only.** Floci's ELBv2 records the load balancer/listener/target-group but
   does not proxy HTTP to tasks, so the ALB DNS output does not serve traffic locally. Routing is
   proven by the template assertions and by a real AWS deploy; local health is probed in-task.
+- **CloudFront is metadata-only.** Floci accepts the `AWS::CloudFront::Distribution` resource and
+  records its config (behaviors, origin, certificate) but does not serve edge traffic. The
+  deployed-origin browser proof runs locally against the PRODUCTION containers behind an ALB-shaped
+  proxy (`bun tools/prove-origin.mjs`); the true edge run happens on the real AWS deploy.
 - **ECS health is `UNKNOWN`.** Floci does not wire the container `healthCheck` into ECS task
   health, so `floci:verify` probes the API directly rather than reading ECS health status.
 - These are emulator limits, not stack defects (ADR-0012). Floci never substitutes for a real
@@ -227,15 +256,18 @@ ElastiCache, derived automatically.
 - AWS credentials for the target account (the CDK CLI resolves `CDK_DEFAULT_ACCOUNT`/`REGION`).
 - A MongoDB Atlas cluster (replica set, for ADR-0010 transactions) with a database user and a
   network path from the VPC — public endpoint + IP allowlist, or VPC peering/PrivateLink.
-- An ACM certificate in the deploy region for the API domain (optional; without it the ALB is
-  HTTP-only).
+- An ACM certificate **in us-east-1** for the app domain + the domain name itself (optional; the
+  distribution then serves the CloudFront default domain with TLS either way). Deploy with
+  `-c certificateArn=… -c domainName=app.example.com` — this also pins the API's
+  `BETTER_AUTH_URL`/`BETTER_AUTH_TRUSTED_ORIGINS` to `https://app.example.com` so same-origin
+  cookie auth works on the deployed origin.
 - Docker, to build and push the API image.
 
 ### 2. Bootstrap and deploy at zero replicas
 
 ```sh
 bunx cdk bootstrap aws://<ACCOUNT>/<REGION>
-bunx cdk deploy CareOpsStack -c target=aws -c desiredCount=0 -c minCapacity=0 -c imageTag=latest --require-approval never
+bunx cdk deploy CareOpsStack -c target=aws -c desiredCount=0 -c minCapacity=0 -c webDesiredCount=0 -c webMinCapacity=0 -c imageTag=latest -c webImageTag=latest --require-approval never
 ```
 
 Note the `EcrRepositoryUri`, `AlbDnsName`, and secret ARNs in the outputs.
@@ -244,10 +276,13 @@ Note the `EcrRepositoryUri`, `AlbDnsName`, and secret ARNs in the outputs.
 
 ```sh
 docker build -f apps/api/Dockerfile -t careops-api:latest .
+docker build -f apps/web/Dockerfile -t careops-web:latest .
 aws ecr get-login-password --region <REGION> \
   | docker login --username AWS --password-stdin <ACCOUNT>.dkr.ecr.<REGION>.amazonaws.com
-docker tag careops-api:latest <EcrRepositoryUri>:latest
-docker push <EcrRepositoryUri>:latest
+docker tag careops-api:latest <ApiEcrRepositoryUri>:latest
+docker tag careops-web:latest <WebEcrRepositoryUri>:latest
+docker push <ApiEcrRepositoryUri>:latest
+docker push <WebEcrRepositoryUri>:latest
 ```
 
 ### 4. Populate the runtime secrets
