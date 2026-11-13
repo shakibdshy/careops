@@ -1,0 +1,25 @@
+{
+  "scenario": "cross-replica-freshness",
+  "generatedAt": "2026-11-13T08:45:57.017Z",
+  "replicas": {
+    "bookingReplica": "http://localhost:3012",
+    "readReplica": "http://localhost:3013",
+    "sharedStores": {
+      "mongo": "mongodb://localhost:27017/careops?replicaSet=rs0",
+      "redis": "redis://localhost:6379"
+    }
+  },
+  "mechanism": "post-commit generation INCR in shared Redis; B recomputes under the new generation (ADR-0011)",
+  "generation": {
+    "before": 53,
+    "after": 54
+  },
+  "dailyVolume30d": {
+    "bookedDay": "2026-11-11",
+    "before": 2,
+    "after": 3,
+    "totalBefore": 20,
+    "totalAfter": 21
+  },
+  "verdict": "booking on replica A visible in the next report read served by replica B"
+}
