@@ -112,8 +112,11 @@ docker run -d --name floci --network floci-net -p 4566:4566 \
   -v /var/run/docker.sock:/var/run/docker.sock -u root floci/floci:latest
 ```
 
-Floci defaults to in-memory storage, so its state is wiped on restart. Re-run the deploy steps
-after restarting the container.
+Floci defaults to in-memory storage, so its state is wiped when the container is **recreated**
+(`docker run` again). A `docker start` of a stopped container resumes it **with** its previous
+state — if a deploy then says a resource "already exists", destroy the stale stack first
+(`bunx cdk destroy CareOpsStack --force`, and delete a leftover ECR repo if the registry
+container survived). Re-run the deploy steps either way.
 
 ### 2. Start the compose data plane
 
@@ -155,8 +158,12 @@ would fail before the image and secret values exist.
 
 ```sh
 bunx cdk bootstrap aws://000000000000/us-east-1
-bunx cdk deploy CareOpsStack -c target=floci -c desiredCount=0 -c imageTag=local --require-approval never
+bunx cdk deploy CareOpsStack -c target=floci -c desiredCount=0 -c minCapacity=0 -c imageTag=local --require-approval never
 ```
+
+`-c minCapacity=0` matters: the auto-scaling bounds enforce `min ≤ desired ≤ max`
+(the deploy fails otherwise), and parking the floor at 0 keeps target tracking
+from launching tasks before the image and secret values exist.
 
 ### 6. Push the image to Floci's ECR
 
@@ -185,7 +192,7 @@ script logs only each secret's name, version, and length — never its value.
 ### 8. Scale to one replica and verify
 
 ```sh
-bunx cdk deploy CareOpsStack -c target=floci -c desiredCount=1 -c imageTag=local --require-approval never
+bunx cdk deploy CareOpsStack -c target=floci -c desiredCount=1 -c minCapacity=1 -c imageTag=local --require-approval never
 bun run floci:verify
 ```
 
@@ -228,7 +235,7 @@ ElastiCache, derived automatically.
 
 ```sh
 bunx cdk bootstrap aws://<ACCOUNT>/<REGION>
-bunx cdk deploy CareOpsStack -c target=aws -c desiredCount=0 -c imageTag=latest --require-approval never
+bunx cdk deploy CareOpsStack -c target=aws -c desiredCount=0 -c minCapacity=0 -c imageTag=latest --require-approval never
 ```
 
 Note the `EcrRepositoryUri`, `AlbDnsName`, and secret ARNs in the outputs.
