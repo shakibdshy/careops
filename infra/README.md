@@ -58,6 +58,8 @@ All commands below run from `infra/`.
 | ---------------- | ------------------------- | -------- | ----------------------------------------------------------------------------- |
 | `target`         | `CAREOPS_DEPLOY_TARGET`   | `aws`    | `aws` or `floci`                                                              |
 | `desiredCount`   | `CAREOPS_DESIRED_COUNT`   | `1`      | API replica count                                                             |
+| `minCapacity`    | `CAREOPS_MIN_CAPACITY`    | `1`      | Auto-scaling floor — the k6-ramp stage lever                                  |
+| `maxCapacity`    | `CAREOPS_MAX_CAPACITY`    | `4`      | Auto-scaling ceiling for both target-tracking policies                        |
 | `imageTag`       | `CAREOPS_IMAGE_TAG`       | `latest` | ECR image tag to deploy                                                       |
 | `certificateArn` | `CAREOPS_CERTIFICATE_ARN` | unset    | ACM cert; when set, ALB serves HTTPS + redirects HTTP                         |
 | `redisUrl`       | `CAREOPS_REDIS_URL`       | derived  | override the Redis URL (defaults: ElastiCache for `aws`, compose for `floci`) |
@@ -65,6 +67,30 @@ All commands below run from `infra/`.
 `synth` and `test` are **env-agnostic**: with no `CDK_DEFAULT_ACCOUNT`/`CDK_DEFAULT_REGION` the
 stack uses placeholder AZs and needs no credentials. A concrete env is set only when the CDK
 CLI resolves credentials, so `cdk deploy` uses the account's real AZs.
+
+### Auto-scaling and the replica ramp (W3-T3)
+
+The service scales on two target-tracking policies — **CPU at 60%** and
+**ALBRequestCountPerTarget at 500 requests/target** — within
+`minCapacity`/`maxCapacity` bounds. Stickiness stays off (asserted by the
+template tests), so any replica serves any request.
+
+Once auto-scaling is registered, the scalable target owns the service's desired
+count. **Raising `minCapacity` pins the floor** for a stage: scale-in stops at
+min, so a stage holds exactly N replicas under load. The k6 ramp redeploys per
+stage and measures each:
+
+```sh
+cdk deploy -c target=aws -c minCapacity=1 && bun tools/k6/ramp.mjs --stage 1
+cdk deploy -c target=aws -c minCapacity=2 && bun tools/k6/ramp.mjs --stage 2
+cdk deploy -c target=aws -c minCapacity=4 && bun tools/k6/ramp.mjs --stage 4
+bun tools/k6/ramp.mjs --report   # validates: throughput rises, zero failures
+```
+
+Each `--stage N` run first describes the ECS service and **fails if fewer than
+N replicas are RUNNING** — the receipt records "N replicas, measured", never
+"N replicas, configured". Point `BASE_URL` at the ALB DNS output. The same
+runner works against Floci (`AWS_ENDPOINT_URL=http://localhost:4566`).
 
 ## Deploy to Floci (local, no AWS account)
 

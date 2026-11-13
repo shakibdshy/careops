@@ -19,6 +19,16 @@ const target: DeployTarget = targetFlag;
 
 const desiredCount = Number(readFlag('desiredCount', 'CAREOPS_DESIRED_COUNT') ?? 1);
 
+// Auto-scaling bounds (W3-T3). minCapacity doubles as the k6-ramp lever: redeploy
+// -c minCapacity=N to hold N replicas for a ramp stage.
+const minCapacity = Number(readFlag('minCapacity', 'CAREOPS_MIN_CAPACITY') ?? 1);
+const maxCapacity = Number(readFlag('maxCapacity', 'CAREOPS_MAX_CAPACITY') ?? 4);
+if (!Number.isInteger(minCapacity) || !Number.isInteger(maxCapacity) || maxCapacity < minCapacity) {
+  throw new Error(
+    `invalid scaling bounds: min=${minCapacity} max=${maxCapacity} (integers, max ≥ min)`,
+  );
+}
+
 const imageTag = readFlag('imageTag', 'CAREOPS_IMAGE_TAG') ?? 'latest';
 
 const certificateArn = readFlag('certificateArn', 'CAREOPS_CERTIFICATE_ARN');
@@ -33,6 +43,8 @@ const region = process.env.CDK_DEFAULT_REGION;
 const props: CareOpsStackProps = {
   target,
   desiredCount,
+  minCapacity,
+  maxCapacity,
   imageTag,
   ...(account && region ? { env: { account, region } } : {}),
   ...(certificateArn ? { certificateArn } : {}),
