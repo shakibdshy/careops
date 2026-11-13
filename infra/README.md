@@ -327,15 +327,19 @@ repo, its secrets, or this documentation. PRs get the gates + an env-agnostic
 
 ### One-time operator setup
 
+Run the idempotent bootstrap script with ANY valid AWS credential once (aws CLI
+login, SSO, or env keys) — it creates the GitHub OIDC identity provider, the
+`careops-github-deploy` role scoped to this repo's main branch, and the inline
+deploy policy, then prints the role ARN:
+
+```sh
+AWS_REGION=us-east-1 node infra/scripts/bootstrap-oidc.mjs --set   # --set writes the GitHub variables via gh
+```
+
+Every deploy after this one is **keyless**. What the script does manually,
+for reference:
+
 1. **OIDC identity provider** (once per AWS account):
-
-   ```sh
-   aws iam create-open-id-connect-provider \
-     --url https://token.actions.githubusercontent.com \
-     --client-id-list sts.amazonaws.com
-   ```
-
-2. **Deploy role** with a trust policy scoped to this repo and branch:
 
    ```json
    {
@@ -369,8 +373,8 @@ repo, its secrets, or this documentation. PRs get the gates + an env-agnostic
    GitHub `environment: production` (deployment-protection rules, wait
    timers) and add the matching `repo:…:environment:production` subject here.
 
-3. **Repository variables** (Settings → Secrets and variables → Actions →
-   Variables — none of these are secrets):
+2. **Repository variables** (the script's `--set` writes the first two; the
+   optional cert/domain pair is operator-provided):
 
    | Variable              | Example                         | Required | Meaning                                                  |
    | --------------------- | ------------------------------- | -------- | -------------------------------------------------------- |
