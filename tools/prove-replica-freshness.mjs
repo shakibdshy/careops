@@ -15,8 +15,8 @@
 // into the dev `careops` db and bumps its generation counter once. Nothing is
 // deleted; point MONGODB_URI at a throwaway seeded db if that matters.
 //
-// Env: MONGODB_URI, REDIS_URL (defaults follow .env.example), REPLICAS_A_PORT /
-// REPLICAS_B_PORT (3012/3013), EMAIL, PASSWORD.
+// Env: MONGODB_URI, REDIS_URL (defaults follow .env.example), REPLICA_A_PORT /
+// REPLICA_B_PORT (3012/3013), EMAIL, PASSWORD.
 //
 // On PASS writes tools/receipts/cross-replica-freshness.json — the receipt
 // docs/scaling.md cites for the multi-replica freshness claim.
@@ -32,8 +32,8 @@ const Redis = apiRequire('ioredis');
 
 const MONGODB_URI = process.env.MONGODB_URI ?? 'mongodb://localhost:27017/careops?replicaSet=rs0';
 const REDIS_URL = process.env.REDIS_URL ?? 'redis://localhost:6379';
-const PORT_A = process.env.REPLICAS_A_PORT ?? '3012';
-const PORT_B = process.env.REPLICAS_B_PORT ?? '3013';
+const PORT_A = process.env.REPLICA_A_PORT ?? '3012';
+const PORT_B = process.env.REPLICA_B_PORT ?? '3013';
 const EMAIL = process.env.EMAIL ?? 'owner@demo.careops';
 const PASSWORD = process.env.PASSWORD ?? 'careops-demo-1';
 const BASE_A = `http://localhost:${PORT_A}`;

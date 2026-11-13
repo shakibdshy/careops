@@ -172,7 +172,7 @@ export class CareOpsStack extends Stack {
         : `redis://${cache.attrRedisEndpointAddress}:${cache.attrRedisEndpointPort}`);
 
     const healthProbe =
-      "node -e \"fetch('http://127.0.0.1:3001/api/health')" +
+      `node -e "fetch('http://127.0.0.1:${API_PORT}${HEALTH_PATH}')` +
       '.then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"';
 
     taskDef.addContainer('api', {

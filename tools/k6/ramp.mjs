@@ -17,9 +17,14 @@
 // "N replicas, measured", not "N replicas, configured". The same ECS API works
 // against AWS and the Floci emulator.
 //
-// Env: BASE_URL (ALB DNS or Floci LB), VUS, DURATION, DAYS, EMAIL, PASSWORD,
-// AWS_ENDPOINT_URL (Floci: http://localhost:4566), AWS_DEFAULT_REGION,
-// CAREOPS_CLUSTER, CAREOPS_SERVICE_MATCH, RECEIPT (default k6-ramp.json).
+// Load scales with the stage: VUs default to VUS_PER_REPLICA × stage, so the
+// added replicas are actually fed — a fixed 30-VU client saturates itself long
+// before 4 replicas and the rising-throughput gate would fail a healthy stack.
+// Set VUS explicitly to pin the client regardless of stage.
+//
+// Env: BASE_URL (ALB DNS or Floci LB), VUS (overrides stage scaling), VUS_PER_REPLICA,
+// DURATION, DAYS, EMAIL, PASSWORD, AWS_ENDPOINT_URL (Floci: http://localhost:4566),
+// AWS_DEFAULT_REGION, CAREOPS_CLUSTER, CAREOPS_SERVICE_MATCH, RECEIPT (default k6-ramp.json).
 
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
@@ -31,7 +36,6 @@ const { ECSClient, DescribeServicesCommand, ListServicesCommand } =
   infraRequire('@aws-sdk/client-ecs');
 
 const BASE_URL = process.env.BASE_URL ?? 'http://localhost:8080';
-const VUS = Number(process.env.VUS ?? 30);
 const DURATION = process.env.DURATION ?? '60s';
 const DAYS = process.env.DAYS ?? '30';
 const EMAIL = process.env.EMAIL ?? 'owner@demo.careops';
@@ -40,6 +44,11 @@ const ENDPOINT = process.env.AWS_ENDPOINT_URL;
 const REGION = process.env.AWS_DEFAULT_REGION ?? 'us-east-1';
 const CLUSTER = process.env.CAREOPS_CLUSTER ?? 'careops';
 const SERVICE_MATCH = process.env.CAREOPS_SERVICE_MATCH ?? 'ApiService';
+// The dashboard scenario performs 4 report reads per iteration.
+const READS_PER_ITERATION = 4;
+// Client load per replica, unless VUS pins it explicitly.
+const VUS_PER_REPLICA = Number(process.env.VUS_PER_REPLICA ?? 15);
+const vusFor = (stage) => (process.env.VUS ? Number(process.env.VUS) : VUS_PER_REPLICA * stage);
 const receiptPath = (name) => fileURLToPath(new URL(`../receipts/${name}`, import.meta.url));
 const RECEIPT_FILE = process.env.RECEIPT ?? 'k6-ramp.json';
 const RECEIPTS_DIR = fileURLToPath(new URL('../receipts/', import.meta.url));
@@ -88,7 +97,7 @@ async function describeRunningCount() {
 
 // -------- k6: one warm dashboard run -----------------------------------------
 
-function runK6(stageReceiptPath) {
+function runK6(stage, stageReceiptPath) {
   const script = fileURLToPath(new URL('dashboard.js', import.meta.url));
   const args = [
     'run',
@@ -96,7 +105,7 @@ function runK6(stageReceiptPath) {
     '--env',
     `BASE_URL=${BASE_URL}`,
     '--env',
-    `VUS=${VUS}`,
+    `VUS=${vusFor(stage)}`,
     '--env',
     `DURATION=${DURATION}`,
     '--env',
@@ -142,17 +151,19 @@ async function measure(stage) {
   }
 
   const stageReceiptPath = receiptPath(`.ramp-stage.json`);
-  await runK6(stageReceiptPath);
+  const vus = vusFor(stage);
+  console.log(`stage ${stage}: ${running} replica(s) RUNNING, driving with ${vus} VUs`);
+  await runK6(stage, stageReceiptPath);
   const run = JSON.parse(readFileSync(stageReceiptPath, 'utf8'));
 
   const durationSeconds = parseDurationSeconds(DURATION);
-  const readsPerSec = round2(((run.iterations ?? 0) * 4) / durationSeconds);
+  const readsPerSec = round2(((run.iterations ?? 0) * READS_PER_ITERATION) / durationSeconds);
   const entry = {
     stage,
     replicasMeasured: running,
     serviceName,
     baseUrl: BASE_URL,
-    vus: VUS,
+    vus,
     duration: DURATION,
     iterations: run.iterations ?? null,
     readsPerSec,
@@ -166,7 +177,11 @@ async function measure(stage) {
   receipt.stages = [...receipt.stages.filter((s) => s.stage !== stage), entry].sort(
     (a, b) => a.stage - b.stage,
   );
-  receipt.meta = { scenario: 'dashboard warm', readsPerIteration: 4, updatedAt: entry.measuredAt };
+  receipt.meta = {
+    scenario: 'dashboard warm',
+    readsPerIteration: READS_PER_ITERATION,
+    updatedAt: entry.measuredAt,
+  };
   writeRampReceipt(receipt);
 
   console.log(
@@ -180,11 +195,9 @@ function report() {
   if (stages.length < 2) {
     throw new Error(`need at least 2 recorded stages in ${RECEIPT_FILE}, have ${stages.length}`);
   }
-  const rows = stages;
-
   console.log('=== k6 replica ramp (aggregate reads/s, dashboard warm) ===');
-  for (const [i, row] of rows.entries()) {
-    const prev = rows[i - 1];
+  for (const [i, row] of stages.entries()) {
+    const prev = stages[i - 1];
     const lift =
       prev && prev.readsPerSec
         ? ` (${round2(row.readsPerSec / prev.readsPerSec)}x vs stage ${prev.stage})`
@@ -195,7 +208,7 @@ function report() {
   }
 
   const problems = [];
-  for (const row of rows) {
+  for (const row of stages) {
     // Auto-scaling OUT past the floor mid-stage is legitimate load response —
     // the receipt still records the real replica count. Under-provisioning
     // (fewer than the stage claims) invalidates the stage.
@@ -206,11 +219,11 @@ function report() {
     }
     if ((row.failures ?? 0) !== 0) problems.push(`stage ${row.stage} had ${row.failures} failures`);
   }
-  for (const [i, row] of rows.entries()) {
+  for (const [i, row] of stages.entries()) {
     if (i === 0) continue;
-    if (!(row.readsPerSec > rows[i - 1].readsPerSec)) {
+    if (!(row.readsPerSec > stages[i - 1].readsPerSec)) {
       problems.push(
-        `stage ${row.stage} reads/s (${row.readsPerSec}) did not rise above stage ${rows[i - 1].stage} (${rows[i - 1].readsPerSec})`,
+        `stage ${row.stage} reads/s (${row.readsPerSec}) did not rise above stage ${stages[i - 1].stage} (${stages[i - 1].readsPerSec})`,
       );
     }
   }
@@ -227,7 +240,7 @@ function report() {
       verifiedAt: new Date().toISOString(),
     };
     writeRampReceipt(receipt);
-    const ladder = rows.map((row) => row.stage).join('→');
+    const ladder = stages.map((row) => row.stage).join('→');
     console.log(`\nramp OK: throughput rose across stages ${ladder} with zero failures.`);
   }
 }

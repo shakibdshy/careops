@@ -9,7 +9,11 @@ the benches speak the same driver version as the shipped code.
 Everything runs against a **throwaway database and separate ports** so a
 measurement never touches the demo `careops` db or your `:3000`/`:3001` dev
 stack. Redis keys read/deleted by these scripts are scoped to the receipts
-Organization id.
+Organization id. **One documented exception** (W3-T3):
+`prove-replica-freshness.mjs` needs the SEEDED demo org (users/members/
+patients), so it books exactly one appointment into the dev `careops` db —
+point `MONGODB_URI` at a throwaway seeded db if that matters. The k6
+`ramp.mjs` runner touches no database directly at all.
 
 ## Prerequisites
 
@@ -59,14 +63,16 @@ mutate demo data.
 
 ## The scripts
 
-| Command                          | Receipt                             | What it measures                                                             |
-| -------------------------------- | ----------------------------------- | ---------------------------------------------------------------------------- |
-| `bun tools/load-dataset.mjs`     | — (seeds db)                        | Deterministic 20k demo + 60k noise appointments, 43 Providers                |
-| `bun tools/explain-index.mjs`    | `receipts/index-explain.json`       | `explain(executionStats)` before (drop index) / after, overlap + cursor list |
-| `bun tools/bench-n-plus-one.mjs` | `receipts/n-plus-one.json`          | Naive per-row fetches vs shipped `$lookup`; observed query counts + ms       |
-| `bun tools/bench-cache.mjs`      | `receipts/cache-miss-hit.json`      | Controlled cache miss→hit per endpoint, with live controls                   |
-| `bun tools/k6/run.mjs`           | `receipts/k6-*.json`                | 10-VU dashboard warm/cold + cursor-list p95; normalized cache delta          |
-| `bun tools/lighthouse.mjs`       | `receipts/lighthouse.json` + `.jpg` | Authenticated `/dashboard` scores, mobile + desktop, production build        |
+| Command                                 | Receipt                                 | What it measures                                                                |
+| --------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------- |
+| `bun tools/load-dataset.mjs`            | — (seeds db)                            | Deterministic 20k demo + 60k noise appointments, 43 Providers                   |
+| `bun tools/explain-index.mjs`           | `receipts/index-explain.json`           | `explain(executionStats)` before (drop index) / after, overlap + cursor list    |
+| `bun tools/bench-n-plus-one.mjs`        | `receipts/n-plus-one.json`              | Naive per-row fetches vs shipped `$lookup`; observed query counts + ms          |
+| `bun tools/bench-cache.mjs`             | `receipts/cache-miss-hit.json`          | Controlled cache miss→hit per endpoint, with live controls                      |
+| `bun tools/k6/run.mjs`                  | `receipts/k6-*.json`                    | 10-VU dashboard warm/cold + cursor-list p95; normalized cache delta             |
+| `bun tools/k6/ramp.mjs`                 | `receipts/k6-ramp.json`                 | Per-replica-stage dashboard reads/s + p95 against the ALB (W3-T3 runbook)       |
+| `bun tools/prove-replica-freshness.mjs` | `receipts/cross-replica-freshness.json` | Two-replica booking→report freshness via the shared-Redis generation (ADR-0011) |
+| `bun tools/lighthouse.mjs`              | `receipts/lighthouse.json` + `.jpg`     | Authenticated `/dashboard` scores, mobile + desktop, production build           |
 
 Run them in the order above (dataset first). Each is idempotent and re-runnable;
 `load-dataset.mjs` wipes and regenerates the receipts `appointment` collection
