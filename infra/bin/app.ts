@@ -23,9 +23,16 @@ const desiredCount = Number(readFlag('desiredCount', 'CAREOPS_DESIRED_COUNT') ??
 // -c minCapacity=N to hold N replicas for a ramp stage.
 const minCapacity = Number(readFlag('minCapacity', 'CAREOPS_MIN_CAPACITY') ?? 1);
 const maxCapacity = Number(readFlag('maxCapacity', 'CAREOPS_MAX_CAPACITY') ?? 4);
-if (!Number.isInteger(minCapacity) || !Number.isInteger(maxCapacity) || maxCapacity < minCapacity) {
+const boundsValid =
+  Number.isInteger(desiredCount) &&
+  Number.isInteger(minCapacity) &&
+  Number.isInteger(maxCapacity) &&
+  maxCapacity >= minCapacity &&
+  desiredCount >= minCapacity &&
+  desiredCount <= maxCapacity;
+if (!boundsValid) {
   throw new Error(
-    `invalid scaling bounds: min=${minCapacity} max=${maxCapacity} (integers, max ≥ min)`,
+    `inconsistent replica bounds: desired=${desiredCount} min=${minCapacity} max=${maxCapacity} (integers, min ≤ desired ≤ max)`,
   );
 }
 

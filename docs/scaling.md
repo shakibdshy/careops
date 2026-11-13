@@ -224,6 +224,13 @@ booked day 2 → 3 appointments, trailing-30d total 20 → 21. No replica-local
 cache can hide a booking from the other replicas. Reproduce with
 `bun tools/prove-replica-freshness.mjs`.
 
+Provenance, stated plainly: this run is **local** — two replicas over the
+compose data plane, not the deployed AWS tier. It proves the _mechanism_
+(shared Redis generation counter + shared Mongo sessions), which is exactly
+what the AWS topology inherits — ElastiCache stands in the same role the
+compose Redis plays here. The deployed-topology end-to-end proof is part of
+the live run below.
+
 ### The replica ramp: 1 → 2 → 4 (runbook)
 
 Aggregate throughput is measured per stage with the W2-T9 dashboard scenario

@@ -10,6 +10,11 @@
 // Prerequisites: compose data plane up (`docker compose up -d --wait`), demo db
 // seeded (`bun run seed`), API built (dist present — `bun run build`).
 //
+// Documented exception to the tools/ throwaway-db rule: the proof needs the
+// SEEDED demo org (users/members/patients), so it books exactly one appointment
+// into the dev `careops` db and bumps its generation counter once. Nothing is
+// deleted; point MONGODB_URI at a throwaway seeded db if that matters.
+//
 // Env: MONGODB_URI, REDIS_URL (defaults follow .env.example), REPLICAS_A_PORT /
 // REPLICAS_B_PORT (3012/3013), EMAIL, PASSWORD.
 //
@@ -18,11 +23,10 @@
 
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { existsSync, copyFileSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
+import { existsSync, copyFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { MongoClient } from './lib/mongo.mjs';
 
-const repoRoot = fileURLToPath(new URL('..', import.meta.url));
 const apiRequire = createRequire(new URL('../apps/api/package.json', import.meta.url));
 const Redis = apiRequire('ioredis');
 
@@ -134,7 +138,7 @@ async function main() {
   // plane; only the port differs. dotenv loads apps/api/.env from the cwd.
   const spawnReplica = (port) =>
     spawn('node', ['dist/main.js'], {
-      cwd: new URL('../apps/api', import.meta.url).pathname,
+      cwd: fileURLToPath(new URL('../apps/api', import.meta.url)),
       env: { ...process.env, PORT: port, MONGODB_URI, REDIS_URL },
       stdio: ['ignore', 'ignore', 'pipe'],
     });
