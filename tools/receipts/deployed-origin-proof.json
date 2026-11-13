@@ -1,0 +1,14 @@
+{
+  "scenario": "deployed-origin",
+  "generatedAt": "2026-11-13T14:22:21.804Z",
+  "origin": "http://localhost:8080 (alb-sim: /* -> web, /api/* -> api)",
+  "containers": {
+    "api": "careops-api:local",
+    "web": "careops-web:local"
+  },
+  "specs": [
+    "apps/web/e2e/origin.spec.ts"
+  ],
+  "verdict": "PASS",
+  "note": "Edge-cache policy (CachingDisabled on SSR/API behaviors) is asserted in the CDK template tests; the app-side no-store + content-follows-session contract is proven here."
+}

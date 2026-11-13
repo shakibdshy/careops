@@ -12,6 +12,11 @@ import type { AppConfig } from '../config/env.js';
 export function createBetterAuth(config: AppConfig, client: MongoClient) {
   const auth = betterAuth({
     secret: config.betterAuthSecret,
+    // The public app origin (CloudFront/ALB domain in a deploy, the local
+    // origin in proofs). better-auth derives the cookie policy from it: https
+    // origins get Secure cookies, http origins do not — so the same-origin
+    // session works behind plain-HTTP test origins too.
+    ...(config.betterAuthUrl ? { baseURL: config.betterAuthUrl } : {}),
     database: mongodbAdapter(client.db()),
     emailAndPassword: {
       enabled: true,
@@ -37,7 +42,13 @@ export function createBetterAuth(config: AppConfig, client: MongoClient) {
         },
       },
     },
-    trustedOrigins: config.nodeEnv === 'production' ? [] : ['http://localhost:3000'],
+    // Deployments name their app origin (BETTER_AUTH_TRUSTED_ORIGINS / the
+    // origin itself via BETTER_AUTH_URL); dev trusts the local web dev server.
+    trustedOrigins: [
+      ...(config.nodeEnv === 'production' ? [] : ['http://localhost:3000']),
+      ...config.trustedOrigins,
+      ...(config.betterAuthUrl ? [config.betterAuthUrl] : []),
+    ],
   });
   return auth;
 }
