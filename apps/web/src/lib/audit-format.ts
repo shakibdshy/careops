@@ -4,6 +4,7 @@
  * of truth — it is always available behind the entry's "Raw payload" disclosure
  * — these helpers only decide what the summary shows.
  */
+import type { AuditEntry } from '@careops/shared';
 
 /** Internal bookkeeping keys — meaningful to the record, not to a reader. */
 const NOISE_KEYS = new Set([
@@ -28,7 +29,7 @@ const LABELS: Record<string, string> = {
   status: 'Status',
 };
 
-const NOTES_LIMIT = 140;
+const MAX_VALUE_LENGTH = 140;
 
 export type AuditChangeRow = {
   label: string;
@@ -64,9 +65,17 @@ function formatValue(key: string, value: unknown): string {
       return formatStampDate(value);
     }
     if (key === 'start') return formatStampDate(value, true);
-    return value.length > NOTES_LIMIT ? `${value.slice(0, NOTES_LIMIT)}…` : value;
+    return value.length > MAX_VALUE_LENGTH ? `${value.slice(0, MAX_VALUE_LENGTH)}…` : value;
   }
   return JSON.stringify(value);
+}
+
+/** Entry timestamp: "2026-11-14 08:55:19 UTC". */
+export function formatStamp(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  const stamp = date.toISOString();
+  return `${stamp.slice(0, 10)} ${stamp.slice(11, 19)} UTC`;
 }
 
 function formatStampDate(value: string, withTime = false): string {
@@ -83,18 +92,46 @@ function formatStampDate(value: string, withTime = false): string {
   return `${day} · ${time} UTC`;
 }
 
-/** A plain-language subject for the entry: "Ada Lovelace" or "starts Nov 12 · 03:17 UTC". */
-export function describeEntity(entity: string, before: unknown, after: unknown): string {
-  const doc = payloadOf(after) ?? payloadOf(before);
-  if (!doc) return entity;
-  if (entity === 'patient') {
+/** Key-order-insensitive text for comparing payload values (nested objects compare by content). */
+function stableValue(value: unknown): string {
+  if (value === null || value === undefined) return 'null';
+  if (typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(stableValue).join(',')}]`;
+  const entries = Object.entries(value).sort(([a], [b]) => a.localeCompare(b));
+  return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${stableValue(v)}`).join(',')}}`;
+}
+
+/** Non-noise keys across the given payloads, in first-seen order. */
+function payloadKeys(...docs: Array<Record<string, unknown> | null>): string[] {
+  return [...new Set(docs.flatMap((doc) => (doc ? Object.keys(doc) : [])))].filter(
+    (key) => !NOISE_KEYS.has(key),
+  );
+}
+
+function makeRow(
+  key: string,
+  beforeDoc: Record<string, unknown> | null,
+  afterDoc: Record<string, unknown> | null,
+): AuditChangeRow {
+  return {
+    label: humanizeKey(key),
+    before: beforeDoc ? formatValue(key, beforeDoc[key]) : null,
+    after: afterDoc ? formatValue(key, afterDoc[key]) : null,
+  };
+}
+
+/** A plain-language subject for the entry, or null when the payload has nothing human to add. */
+export function describeEntity(entry: AuditEntry): string | null {
+  const doc = payloadOf(entry.after) ?? payloadOf(entry.before);
+  if (!doc) return null;
+  if (entry.entity === 'patient') {
     const name = [doc.firstName, doc.lastName].filter((v) => typeof v === 'string' && v).join(' ');
     return name || 'unnamed patient';
   }
-  if (entity === 'appointment' && typeof doc.start === 'string') {
+  if (entry.entity === 'appointment' && typeof doc.start === 'string') {
     return `starts ${formatStampDate(doc.start, true)}`;
   }
-  return entity;
+  return null;
 }
 
 /** One row per non-noise key, showing only what actually changed. */
@@ -102,48 +139,27 @@ export function changedRows(before: unknown, after: unknown): AuditChangeRow[] {
   const beforeDoc = payloadOf(before);
   const afterDoc = payloadOf(after);
   if (!beforeDoc && !afterDoc) return [];
-  const keys = [
-    ...new Set([...Object.keys(beforeDoc ?? {}), ...Object.keys(afterDoc ?? {})]),
-  ].filter((key) => !NOISE_KEYS.has(key));
-  const rows: AuditChangeRow[] = [];
-  for (const key of keys) {
-    const beforeValue = beforeDoc ? beforeDoc[key] : undefined;
-    const afterValue = afterDoc ? afterDoc[key] : undefined;
-    if (JSON.stringify(beforeValue ?? null) === JSON.stringify(afterValue ?? null)) continue;
-    rows.push({
-      label: humanizeKey(key),
-      before: beforeDoc ? formatValue(key, beforeValue) : null,
-      after: afterDoc ? formatValue(key, afterValue) : null,
-    });
-  }
-  return rows;
+  return payloadKeys(beforeDoc, afterDoc)
+    .filter((key) => stableValue(beforeDoc?.[key]) !== stableValue(afterDoc?.[key]))
+    .map((key) => makeRow(key, beforeDoc, afterDoc));
 }
 
 /** One row per non-empty field — the summary for create (after) and delete (before). */
 export function summarizeDoc(doc: unknown): AuditChangeRow[] {
   const payload = payloadOf(doc);
   if (!payload) return [];
-  return Object.keys(payload)
-    .filter((key) => !NOISE_KEYS.has(key))
+  return payloadKeys(payload)
     .filter((key) => payload[key] !== null && payload[key] !== undefined && payload[key] !== '')
-    .map((key) => ({
-      label: humanizeKey(key),
-      before: null,
-      after: formatValue(key, payload[key]),
-    }));
+    .map((key) => makeRow(key, null, payload));
 }
 
 /** Which one-sided summary a non-update action shows, and the rows to render. */
-export function entryChanges(
-  action: 'create' | 'update' | 'delete',
-  before: unknown,
-  after: unknown,
-): { heading: string; rows: AuditChangeRow[] } {
-  if (action === 'update') {
-    return { heading: 'Changed', rows: changedRows(before, after) };
+export function entryChanges(entry: AuditEntry): { heading: string; rows: AuditChangeRow[] } {
+  if (entry.action === 'update') {
+    return { heading: 'Changed', rows: changedRows(entry.before, entry.after) };
   }
-  if (action === 'create') {
-    return { heading: 'Created with', rows: summarizeDoc(after) };
+  if (entry.action === 'create') {
+    return { heading: 'Created with', rows: summarizeDoc(entry.after) };
   }
-  return { heading: 'Deleted record', rows: summarizeDoc(before) };
+  return { heading: 'Deleted record', rows: summarizeDoc(entry.before) };
 }

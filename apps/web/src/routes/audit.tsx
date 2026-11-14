@@ -24,7 +24,7 @@ import { Card } from '#/components/ui/card';
 import { EmptyState } from '#/components/ui/empty-state';
 import { Skeleton } from '#/components/ui/skeleton';
 import { apiGet } from '#/lib/api';
-import { describeEntity, entryChanges } from '#/lib/audit-format';
+import { describeEntity, entryChanges, formatStamp } from '#/lib/audit-format';
 import { useWorkspace } from '#/lib/use-workspace';
 import { cn } from '#/lib/utils';
 
@@ -39,12 +39,7 @@ const ACTION_META: Record<
   delete: { icon: Trash2, variant: 'destructive', rail: 'bg-destructive' },
 };
 
-function formatStamp(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  const stamp = date.toISOString();
-  return `${stamp.slice(0, 10)} ${stamp.slice(11, 19)} UTC`;
-}
+const MAX_VISIBLE_ROWS = 8;
 
 function AuditPage() {
   const me = useWorkspace('/audit');
@@ -137,7 +132,8 @@ function AuditTrail({ me }: { me: WorkspaceMe }) {
           {entries.map((entry, index) => {
             const meta = ACTION_META[entry.action];
             const Icon = meta.icon;
-            const { heading, rows } = entryChanges(entry.action, entry.before, entry.after);
+            const { heading, rows } = entryChanges(entry);
+            const subject = describeEntity(entry);
             const entityTitle = entry.entity.charAt(0).toUpperCase() + entry.entity.slice(1);
             return (
               <li key={entry.id} data-testid="audit-row" className="relative animate-rise">
@@ -154,10 +150,13 @@ function AuditTrail({ me }: { me: WorkspaceMe }) {
                       {entry.action}
                     </Badge>
                     <span className="text-sm font-medium">
-                      {entityTitle} ·{' '}
-                      <span className="font-normal">
-                        {describeEntity(entry.entity, entry.before, entry.after)}
-                      </span>
+                      {entityTitle}
+                      {subject && (
+                        <>
+                          {' '}
+                          · <span className="font-normal">{subject}</span>
+                        </>
+                      )}
                     </span>
                     <span className="font-mono text-[11px] text-muted-foreground/80">
                       {entry.entityId.slice(0, 8)}…
@@ -181,7 +180,7 @@ function AuditTrail({ me }: { me: WorkspaceMe }) {
                       </p>
                     ) : (
                       <ul className="mt-1.5 grid gap-1.5">
-                        {rows.slice(0, 8).map((row) => (
+                        {rows.slice(0, MAX_VISIBLE_ROWS).map((row) => (
                           <li
                             key={row.label}
                             className="grid items-center gap-x-3 gap-y-1 text-sm sm:grid-cols-[minmax(9rem,auto)_1fr]"
@@ -215,9 +214,9 @@ function AuditTrail({ me }: { me: WorkspaceMe }) {
                         ))}
                       </ul>
                     )}
-                    {rows.length > 8 && (
+                    {rows.length > MAX_VISIBLE_ROWS && (
                       <p className="mt-1.5 text-xs text-muted-foreground">
-                        + {rows.length - 8} more — open the raw payload.
+                        + {rows.length - MAX_VISIBLE_ROWS} more — open the raw payload.
                       </p>
                     )}
                   </div>
