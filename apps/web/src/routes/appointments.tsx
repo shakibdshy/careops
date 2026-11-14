@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { eq } from '@tanstack/db';
 import { useDbClient, useLiveInfiniteQuery } from '@tanstack/react-db';
@@ -19,14 +19,20 @@ import {
   type Patient,
   type WorkspaceMe,
 } from '@careops/shared';
-import { ArrowLeft, CalendarClock, CalendarPlus } from 'lucide-react';
+import { CalendarClock, CalendarPlus, CircleAlert, ListFilter } from 'lucide-react';
+import { AppShell } from '#/components/app-shell';
 import { EntityPicker, type PickerOption } from '#/components/entity-picker';
-import { ZodForm, type ZodFormControl } from '#/components/zod-form';
+import { PageHeader } from '#/components/page-header';
+import { PageLoading } from '#/components/page-loading';
+import { ZodForm } from '#/components/zod-form';
 import { Alert, AlertDescription } from '#/components/ui/alert';
+import { Avatar } from '#/components/ui/avatar';
 import { Badge } from '#/components/ui/badge';
 import { Button } from '#/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '#/components/ui/card';
-import { Input } from '#/components/ui/input';
+import { Dialog } from '#/components/ui/dialog';
+import { EmptyState } from '#/components/ui/empty-state';
+import { Select } from '#/components/ui/select';
 import { Skeleton } from '#/components/ui/skeleton';
 import {
   Table,
@@ -42,6 +48,7 @@ import {
   APPOINTMENTS_PAGE_SIZE,
   appointmentsCollectionOptions,
 } from '#/lib/appointments-collection';
+import { formatDateTimeDisplay } from '#/lib/dates';
 import { useWorkspace } from '#/lib/use-workspace';
 import { cn } from '#/lib/utils';
 
@@ -54,46 +61,10 @@ const EMPTY_APPOINTMENTS: Appointment[] = [];
 const EMPTY_MEMBERS: OrganizationMember[] = [];
 const EMPTY_PATIENTS: Patient[] = [];
 
-const selectClass =
-  'h-9 rounded-md border border-input bg-transparent px-3 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
-
-/** The wall-clock input is interpreted as UTC (the contract books UTC starts). */
-function isoToDatetimeLocal(iso: string): string {
-  const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 16);
-}
-
-function datetimeLocalToIso(local: string): string {
-  return new Date(`${local}:00Z`).toISOString();
-}
-
-function formatStart(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  const stamp = date.toISOString();
-  return `${stamp.slice(0, 10)} ${stamp.slice(11, 16)} UTC`;
-}
-
-function UtcDateTimeField({ control, testId }: { control: ZodFormControl; testId?: string }) {
-  return (
-    <Input
-      id={control.name}
-      name={control.name}
-      type="datetime-local"
-      data-testid={testId ?? control.testId}
-      aria-invalid={control.invalid || undefined}
-      aria-describedby={control.invalid ? control.errorId : undefined}
-      value={control.value ? isoToDatetimeLocal(control.value) : ''}
-      onBlur={control.onBlur}
-      onChange={(e) => control.onChange(e.target.value ? datetimeLocalToIso(e.target.value) : '')}
-    />
-  );
-}
-
 function AppointmentsPage() {
   const me = useWorkspace('/appointments');
   if (!me) {
-    return <div className="p-8 text-muted-foreground">Loading…</div>;
+    return <PageLoading />;
   }
   // Mounted only after the client-side auth check, so live queries never
   // subscribe during SSR.
@@ -169,13 +140,16 @@ function AppointmentsWorkspace({ me }: { me: WorkspaceMe }) {
     column.accessor('patientId', {
       header: 'Patient',
       cell: (info) => (
-        <Link
-          to="/patients/$patientId"
-          params={{ patientId: info.row.original.patientId }}
-          className="font-medium text-primary underline-offset-4 hover:underline"
-        >
-          {patientName(info.row.original.patientId)}
-        </Link>
+        <span className="flex items-center gap-2.5">
+          <Avatar name={patientName(info.row.original.patientId)} size="sm" />
+          <Link
+            to="/patients/$patientId"
+            params={{ patientId: info.row.original.patientId }}
+            className="font-medium text-foreground underline-offset-4 transition-colors hover:text-primary hover:underline"
+          >
+            {patientName(info.row.original.patientId)}
+          </Link>
+        </span>
       ),
     }),
     column.accessor('memberId', {
@@ -183,10 +157,16 @@ function AppointmentsWorkspace({ me }: { me: WorkspaceMe }) {
       cell: (info) => providerName(info.row.original.memberId),
     }),
     column.accessor('start', {
-      header: 'Start',
-      cell: (info) => (
-        <span className="tabular-nums text-muted-foreground">{formatStart(info.getValue())}</span>
-      ),
+      header: 'Start (UTC)',
+      cell: (info) => {
+        const [datePart, timePart] = formatDateTimeDisplay(info.getValue()).split(' · ');
+        return (
+          <span className="block font-mono text-xs tabular-nums text-muted-foreground">
+            <span className="block whitespace-nowrap">{datePart}</span>
+            <span className="block whitespace-nowrap text-muted-foreground/75">{timePart}</span>
+          </span>
+        );
+      },
     }),
     column.accessor('durationMinutes', {
       header: 'Duration',
@@ -227,37 +207,33 @@ function AppointmentsWorkspace({ me }: { me: WorkspaceMe }) {
   });
 
   return (
-    <div className="mx-auto max-w-6xl p-6 lg:p-8">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <Link
-            to="/workspace"
-            className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <ArrowLeft className="size-3.5" /> Workspace
-          </Link>
-          <p className="mt-3 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-            {me.organization.name}
-          </p>
-          <h1 className="mt-1 text-3xl font-bold tracking-tight">Appointments</h1>
-        </div>
-        <Badge variant="secondary" className="gap-1.5 px-3 py-1">
-          <CalendarClock className="size-3.5" />
-          {live.data.length} {live.data.length === 1 ? 'booking' : 'bookings'}
-        </Badge>
-      </header>
+    <AppShell me={me} active="appointments">
+      <PageHeader
+        eyebrow={me.organization.name}
+        title="Appointments"
+        description="Book Providers in UTC, track every status change, and reschedule without double-booking."
+        actions={
+          <Badge variant="secondary" className="gap-1.5 px-3 py-1">
+            <CalendarClock className="size-3.5" />
+            {live.data.length} {live.data.length === 1 ? 'booking' : 'bookings'}
+          </Badge>
+        }
+      />
 
       <div
         className={cn(
           'mt-6 grid items-start gap-6',
-          canManage && 'lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]',
+          canManage && 'xl:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]',
         )}
       >
         {canManage && (
-          <Card className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+          <Card className="animate-rise xl:sticky xl:top-20">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <CalendarPlus className="size-4 text-primary" /> Book appointment
+              <CardTitle className="flex items-center gap-2">
+                <span className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <CalendarPlus className="size-4" />
+                </span>
+                Book appointment
               </CardTitle>
               <CardDescription>
                 Books a Provider for one Patient at a UTC start. Overlapping slots are rejected.
@@ -305,15 +281,15 @@ function AppointmentsWorkspace({ me }: { me: WorkspaceMe }) {
                   {
                     name: 'start',
                     label: 'Start (UTC)',
+                    type: 'datetime',
                     testId: 'booking-start',
-                    render: (control) => (
-                      <UtcDateTimeField control={control} testId="booking-start" />
-                    ),
                   },
                   {
                     name: 'durationMinutes',
-                    label: 'Duration (minutes)',
+                    label: 'Duration',
                     type: 'number',
+                    step: 5,
+                    suffix: 'min',
                     testId: 'booking-duration',
                   },
                   {
@@ -336,12 +312,15 @@ function AppointmentsWorkspace({ me }: { me: WorkspaceMe }) {
           </Card>
         )}
 
-        <Card className="animate-in fade-in slide-in-from-bottom-2 overflow-hidden duration-300">
-          <div className="flex flex-wrap items-center gap-3 border-b px-4 py-3">
+        <Card className="overflow-hidden animate-rise" style={{ animationDelay: '80ms' }}>
+          <div className="flex flex-wrap items-center gap-3 border-b border-border/70 p-4">
+            <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              <ListFilter className="size-3.5" /> Filter
+            </span>
             <label className="flex items-center gap-2 text-sm">
               <span className="text-muted-foreground">Status</span>
-              <select
-                className={selectClass}
+              <Select
+                className="w-40"
                 data-testid="filter-status"
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value as AppointmentStatus | '')}
@@ -352,12 +331,12 @@ function AppointmentsWorkspace({ me }: { me: WorkspaceMe }) {
                     {STATUS_META[status].label}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
             <label className="flex items-center gap-2 text-sm">
               <span className="text-muted-foreground">Provider</span>
-              <select
-                className={selectClass}
+              <Select
+                className="w-44"
                 data-testid="filter-provider"
                 value={memberFilter}
                 onChange={(e) => setMemberFilter(e.target.value)}
@@ -368,7 +347,7 @@ function AppointmentsWorkspace({ me }: { me: WorkspaceMe }) {
                     {member.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
           </div>
           <Table data-testid="appointments-list">
@@ -396,11 +375,7 @@ function AppointmentsWorkspace({ me }: { me: WorkspaceMe }) {
                 ))}
               {!live.isLoading &&
                 table.getRowModel().rows.map((row) => (
-                  <TableRow
-                    key={row.id}
-                    data-testid="appointment-row"
-                    className="transition-colors hover:bg-accent/40"
-                  >
+                  <TableRow key={row.id} data-testid="appointment-row">
                     {row.getAllCells().map((cell) => (
                       <TableCell key={cell.id}>
                         <table.FlexRender cell={cell} />
@@ -409,11 +384,17 @@ function AppointmentsWorkspace({ me }: { me: WorkspaceMe }) {
                   </TableRow>
                 ))}
               {!live.isLoading && table.getRowModel().rows.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={columns.length} className="h-24 text-center">
-                    <span className="text-muted-foreground">
-                      No appointments match{canManage ? ' — book the first one.' : '.'}
-                    </span>
+                <TableRow className="hover:bg-transparent">
+                  <TableCell colSpan={columns.length}>
+                    <EmptyState
+                      icon={CalendarClock}
+                      title="No appointments match"
+                      hint={
+                        canManage
+                          ? 'Book the first one with the form.'
+                          : 'Bookings appear here once your team adds them.'
+                      }
+                    />
                   </TableCell>
                 </TableRow>
               )}
@@ -422,13 +403,14 @@ function AppointmentsWorkspace({ me }: { me: WorkspaceMe }) {
           {live.isLoadingError && (
             <div className="p-4">
               <Alert variant="destructive">
+                <CircleAlert />
                 <AlertDescription>
                   Could not load appointments. Refresh to try again.
                 </AlertDescription>
               </Alert>
             </div>
           )}
-          <div className="flex items-center justify-between border-t px-4 py-3">
+          <div className="flex items-center justify-between border-t border-border/70 px-4 py-3">
             <p className="text-xs text-muted-foreground">
               {live.hasNextPage ? 'More bookings available' : 'End of list'}
             </p>
@@ -456,7 +438,7 @@ function AppointmentsWorkspace({ me }: { me: WorkspaceMe }) {
           onClose={() => setRescheduleTarget(null)}
         />
       )}
-    </div>
+    </AppShell>
   );
 }
 
@@ -503,11 +485,11 @@ function StatusActions({
 
   return (
     <div className="grid gap-1.5">
-      <div className="flex flex-wrap gap-1.5">
+      <div className="flex min-w-[9rem] flex-wrap gap-1">
         {targets.map((target) => (
           <Button
             key={target}
-            size="sm"
+            size="xs"
             variant="outline"
             disabled={pending !== undefined}
             data-testid={`transition-${appointment.id}-${target}`}
@@ -520,7 +502,7 @@ function StatusActions({
         ))}
         {reschedulable && (
           <Button
-            size="sm"
+            size="xs"
             variant="ghost"
             disabled={pending !== undefined}
             data-testid={`reschedule-${appointment.id}`}
@@ -553,102 +535,80 @@ function RescheduleDialog({
 }) {
   const db = useDbClient();
   const appointments = db.collection(appointmentsCollectionOptions);
-  const cardRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    cardRef.current?.focus();
-    function onKey(event: KeyboardEvent) {
-      if (event.key === 'Escape') onClose();
-    }
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [onClose]);
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Reschedule appointment"
-      data-testid="reschedule-dialog"
+    <Dialog
+      onClose={onClose}
+      label="Reschedule appointment"
+      testId="reschedule-dialog"
+      overlayTestId="reschedule-overlay"
     >
-      <div
-        className="absolute inset-0 bg-black/50"
-        onClick={onClose}
-        data-testid="reschedule-overlay"
-      />
-      <Card
-        ref={cardRef}
-        tabIndex={-1}
-        className="relative z-10 w-full max-w-md animate-in fade-in zoom-in-95 duration-200 focus:outline-none"
-      >
-        <CardHeader>
-          <CardTitle className="text-base">Reschedule appointment</CardTitle>
-          <CardDescription>
-            Change the start, duration, or Provider. The Conflict check re-runs on save.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ZodForm
-            schema={rescheduleAppointmentSchema}
-            defaultValues={{
-              start: appointment.start,
-              durationMinutes: appointment.durationMinutes,
-              memberId: appointment.memberId,
-            }}
-            fields={[
-              {
-                name: 'start',
-                label: 'Start (UTC)',
-                testId: 'reschedule-start',
-                render: (control) => (
-                  <UtcDateTimeField control={control} testId="reschedule-start" />
-                ),
-              },
-              {
-                name: 'durationMinutes',
-                label: 'Duration (minutes)',
-                type: 'number',
-                testId: 'reschedule-duration',
-              },
-              {
-                name: 'memberId',
-                label: 'Provider',
-                testId: 'reschedule-provider',
-                render: (control) => (
-                  <EntityPicker
-                    control={control}
-                    options={providerOptions}
-                    placeholder="Search providers…"
-                    emptyMessage="No providers found"
-                    testId="reschedule-provider"
-                  />
-                ),
-              },
-            ]}
-            submitLabel="Save reschedule"
-            submitTestId="save-reschedule"
-            onSubmit={async (values) => {
-              const tx = appointments.update(appointment.id, (draft) => {
-                if (values.start !== undefined) draft.start = values.start;
-                if (values.durationMinutes !== undefined)
-                  draft.durationMinutes = values.durationMinutes;
-                if (values.memberId !== undefined) draft.memberId = values.memberId;
-              });
-              await tx.when('settled');
-              onClose();
-            }}
-          />
-          <Button
-            variant="ghost"
-            className="mt-2 w-full"
-            onClick={onClose}
-            data-testid="cancel-reschedule"
-          >
-            Cancel
-          </Button>
-        </CardContent>
-      </Card>
-    </div>
+      <div className="border-b border-border/70 p-5 pb-4">
+        <h2 className="font-display text-lg font-semibold">Reschedule appointment</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Change the start, duration, or Provider. The Conflict check re-runs on save.
+        </p>
+      </div>
+      <div className="p-5">
+        <ZodForm
+          schema={rescheduleAppointmentSchema}
+          defaultValues={{
+            start: appointment.start,
+            durationMinutes: appointment.durationMinutes,
+            memberId: appointment.memberId,
+          }}
+          fields={[
+            {
+              name: 'start',
+              label: 'Start (UTC)',
+              type: 'datetime',
+              testId: 'reschedule-start',
+            },
+            {
+              name: 'durationMinutes',
+              label: 'Duration',
+              type: 'number',
+              step: 5,
+              suffix: 'min',
+              testId: 'reschedule-duration',
+            },
+            {
+              name: 'memberId',
+              label: 'Provider',
+              testId: 'reschedule-provider',
+              render: (control) => (
+                <EntityPicker
+                  control={control}
+                  options={providerOptions}
+                  placeholder="Search providers…"
+                  emptyMessage="No providers found"
+                  testId="reschedule-provider"
+                />
+              ),
+            },
+          ]}
+          submitLabel="Save reschedule"
+          submitTestId="save-reschedule"
+          onSubmit={async (values) => {
+            const tx = appointments.update(appointment.id, (draft) => {
+              if (values.start !== undefined) draft.start = values.start;
+              if (values.durationMinutes !== undefined)
+                draft.durationMinutes = values.durationMinutes;
+              if (values.memberId !== undefined) draft.memberId = values.memberId;
+            });
+            await tx.when('settled');
+            onClose();
+          }}
+        />
+        <Button
+          variant="ghost"
+          className="mt-2 w-full"
+          onClick={onClose}
+          data-testid="cancel-reschedule"
+        >
+          Cancel
+        </Button>
+      </div>
+    </Dialog>
   );
 }

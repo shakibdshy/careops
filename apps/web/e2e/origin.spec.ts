@@ -46,6 +46,8 @@ async function seedViaApi(page: Page): Promise<{ patientId: string; providerId: 
 
 async function signInViaUi(page: Page): Promise<void> {
   await page.goto('/login');
+  // SSR renders before React hydrates; filling too early is lost (see gotoHydrated).
+  await page.waitForLoadState('networkidle');
   await page.getByPlaceholder('Email').fill(email);
   await page.getByPlaceholder('Password').fill(password);
   await page.locator('button[type=submit]').click();

@@ -9,6 +9,10 @@ const WEB_PORT = 3000;
  */
 export default defineConfig({
   testDir: './e2e',
+  // The deployed-origin proof targets production artifacts (SSR no-store +
+  // ALB-shaped origin) and runs via tools/prove-origin.mjs against
+  // playwright.origin.config.ts — not the dev servers booted here.
+  testIgnore: /origin\.spec\.ts/,
   timeout: 60_000,
   retries: process.env.CI ? 1 : 0,
   use: {

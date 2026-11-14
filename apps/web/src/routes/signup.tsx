@@ -1,5 +1,11 @@
 import { useState } from 'react';
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
+import { CircleAlert, KeyRound, Loader2, Mail, UserRound } from 'lucide-react';
+import { AuthLayout } from '#/components/auth-layout';
+import { Alert, AlertDescription } from '#/components/ui/alert';
+import { Button } from '#/components/ui/button';
+import { Input } from '#/components/ui/input';
+import { Label } from '#/components/ui/label';
 import { authClient } from '../lib/auth-client';
 
 export const Route = createFileRoute('/signup')({ component: Signup });
@@ -26,57 +32,83 @@ function Signup() {
   }
 
   return (
-    <div className="mx-auto mt-16 max-w-sm p-6">
-      <h1 className="text-2xl font-bold">Sign up for CareOps</h1>
+    <AuthLayout
+      title="Create your workspace"
+      subtitle="One organization, your whole team, every appointment in UTC."
+      footer={
+        <>
+          Already have an account?{' '}
+          <Link to="/login" className="font-medium text-primary underline-offset-4 hover:underline">
+            Sign in
+          </Link>
+        </>
+      }
+    >
       <form
         onSubmit={(e) => {
           void onSubmit(e);
         }}
-        className="mt-6 flex flex-col gap-4"
+        className="grid gap-4"
       >
-        <input
-          required
-          placeholder="Name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          className="rounded border p-2"
-        />
-        <input
-          type="email"
-          required
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="rounded border p-2"
-        />
-        <input
-          type="password"
-          required
-          minLength={8}
-          placeholder="Password (min 8 chars)"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className="rounded border p-2"
-        />
+        <div className="grid gap-1.5">
+          <Label htmlFor="signup-name">Your name</Label>
+          <div className="relative">
+            <UserRound className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground/70" />
+            <Input
+              id="signup-name"
+              required
+              placeholder="Name"
+              autoComplete="name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor="signup-email">Work email</Label>
+          <div className="relative">
+            <Mail className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground/70" />
+            <Input
+              id="signup-email"
+              type="email"
+              required
+              placeholder="Email"
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor="signup-password">Password</Label>
+          <div className="relative">
+            <KeyRound className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground/70" />
+            <Input
+              id="signup-password"
+              type="password"
+              required
+              minLength={8}
+              placeholder="Password (min 8 chars)"
+              autoComplete="new-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+        </div>
         {error && (
-          <p className="text-red-600" data-testid="signup-error">
-            {error}
-          </p>
+          <Alert variant="destructive" data-testid="signup-error">
+            <CircleAlert />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
         )}
-        <button
-          type="submit"
-          disabled={pending}
-          className="rounded bg-black p-2 text-white disabled:opacity-50"
-        >
+        <Button type="submit" disabled={pending} className="w-full">
+          {pending && <Loader2 className="animate-spin" />}
           {pending ? 'Creating account…' : 'Sign up'}
-        </button>
+        </Button>
       </form>
-      <p className="mt-4 text-sm text-gray-600">
-        Already have an account?{' '}
-        <Link to="/login" className="underline">
-          Sign in
-        </Link>
-      </p>
-    </div>
+    </AuthLayout>
   );
 }

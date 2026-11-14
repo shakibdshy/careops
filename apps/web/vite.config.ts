@@ -7,12 +7,13 @@ import { tanstackStart } from '@tanstack/react-start/plugin/vite';
 import viteReact from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 
-const config = defineConfig({
+const config = defineConfig(({ command }) => ({
   resolve: { tsconfigPaths: true },
   // Bundle server-side dependencies into dist/server so the production image
   // ships no node_modules at all — the SSR handler is the only runtime code
-  // (W3-T4 web container: slim Node + dist + server.mjs).
-  ssr: { noExternal: true },
+  // (W3-T4 web container: slim Node + dist + server.mjs). Dev keeps deps
+  // external: inlining CJS packages (react) in the SSR module runner crashes.
+  ssr: command === 'build' ? { noExternal: true } : {},
   server: {
     proxy: {
       '/api': {
@@ -24,6 +25,6 @@ const config = defineConfig({
     },
   },
   plugins: [devtools(), tailwindcss(), tanstackStart(), viteReact()],
-});
+}));
 
 export default config;

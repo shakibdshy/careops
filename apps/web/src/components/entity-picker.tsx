@@ -1,6 +1,7 @@
 import { useId, useState } from 'react';
 import { useDebouncedValue } from '@tanstack/react-pacer';
-import { Check } from 'lucide-react';
+import { Check, ChevronDown } from 'lucide-react';
+import { Avatar } from '#/components/ui/avatar';
 import { Input } from '#/components/ui/input';
 import type { ZodFormControl } from '#/components/zod-form';
 import { cn } from '#/lib/utils';
@@ -33,6 +34,7 @@ export function EntityPicker({
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const [activeIndex, setActiveIndex] = useState(0);
   const [debouncedSearch] = useDebouncedValue(search, { wait: 200 });
   const listboxId = useId();
   const selected = options.find((option) => option.id === control.value);
@@ -51,6 +53,7 @@ export function EntityPicker({
     control.onBlur();
     setOpen(false);
     setSearch('');
+    setActiveIndex(0);
   }
 
   return (
@@ -68,13 +71,16 @@ export function EntityPicker({
         placeholder={placeholder}
         disabled={disabled}
         value={open ? search : (selected?.label ?? '')}
+        className="pr-9"
         onFocus={() => {
           setOpen(true);
           setSearch('');
+          setActiveIndex(0);
         }}
         onChange={(e) => {
           setSearch(e.target.value);
           setOpen(true);
+          setActiveIndex(0);
         }}
         onBlur={() => {
           setOpen(false);
@@ -82,19 +88,38 @@ export function EntityPicker({
         }}
         onKeyDown={(e) => {
           if (e.key === 'Escape') setOpen(false);
+          if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            setOpen(true);
+            setActiveIndex((index) => Math.min(index + 1, filtered.length - 1));
+          }
+          if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            setActiveIndex((index) => Math.max(index - 1, 0));
+          }
+          if (e.key === 'Enter' && open && filtered[activeIndex]) {
+            e.preventDefault();
+            choose(filtered[activeIndex]);
+          }
         }}
+      />
+      <ChevronDown
+        className={cn(
+          'pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground transition-transform duration-200',
+          open && 'rotate-180',
+        )}
       />
       {open && (
         <div
           id={listboxId}
           role="listbox"
           data-testid={`${testId ?? control.testId ?? control.name}-listbox`}
-          className="absolute z-20 mt-1 max-h-60 w-full overflow-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
+          className="absolute z-30 mt-1.5 max-h-64 w-full overflow-auto rounded-xl border border-border/80 bg-popover p-1 text-popover-foreground shadow-pop animate-in fade-in zoom-in-95 slide-in-from-top-1 duration-150"
         >
           {filtered.length === 0 ? (
-            <p className="px-2 py-3 text-sm text-muted-foreground">{emptyMessage}</p>
+            <p className="px-3 py-4 text-center text-sm text-muted-foreground">{emptyMessage}</p>
           ) : (
-            filtered.map((option) => (
+            filtered.map((option, index) => (
               <button
                 key={option.id}
                 type="button"
@@ -103,19 +128,24 @@ export function EntityPicker({
                 data-testid={`picker-option-${option.id}`}
                 // Keep focus on the input so blur does not close the list before click.
                 onMouseDown={(e) => e.preventDefault()}
+                onMouseEnter={() => setActiveIndex(index)}
                 onClick={() => choose(option)}
                 className={cn(
-                  'flex w-full items-center justify-between gap-2 rounded-sm px-2 py-1.5 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground',
-                  option.id === control.value && 'bg-accent/60',
+                  'flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-sm transition-colors',
+                  index === activeIndex && 'bg-accent text-accent-foreground',
+                  option.id === control.value && index !== activeIndex && 'bg-accent/50',
                 )}
               >
-                <span className="truncate">
-                  <span className="font-medium">{option.label}</span>
+                <Avatar name={option.label} size="sm" />
+                <span className="min-w-0 flex-1 truncate">
+                  <span className="block truncate font-medium">{option.label}</span>
                   {option.sublabel && (
-                    <span className="ml-2 text-muted-foreground">{option.sublabel}</span>
+                    <span className="block truncate text-xs text-muted-foreground">
+                      {option.sublabel}
+                    </span>
                   )}
                 </span>
-                {option.id === control.value && <Check className="size-3.5 shrink-0" />}
+                {option.id === control.value && <Check className="size-4 shrink-0 text-primary" />}
               </button>
             ))
           )}

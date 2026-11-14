@@ -7,6 +7,7 @@ import { TanStackDevtools } from '@tanstack/react-devtools';
 import { useState } from 'react';
 
 import appCss from '../styles.css?url';
+import { THEME_BOOT_SCRIPT } from '../lib/theme';
 
 export const Route = createRootRoute({
   head: () => ({
@@ -17,6 +18,10 @@ export const Route = createRootRoute({
       {
         name: 'viewport',
         content: 'width=device-width, initial-scale=1',
+      },
+      {
+        name: 'theme-color',
+        content: '#14343c',
       },
       {
         title: 'CareOps',
@@ -47,8 +52,9 @@ function RootDocument({ children }: { children: React.ReactNode }) {
   const [dbClient] = useState(() => new DbClient({ queryClient }));
 
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
         <HeadContent />
       </head>
       <body>

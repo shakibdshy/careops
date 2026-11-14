@@ -1,5 +1,11 @@
 import { useState } from 'react';
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
+import { CircleAlert, KeyRound, Loader2, Mail } from 'lucide-react';
+import { AuthLayout } from '#/components/auth-layout';
+import { Alert, AlertDescription } from '#/components/ui/alert';
+import { Button } from '#/components/ui/button';
+import { Input } from '#/components/ui/input';
+import { Label } from '#/components/ui/label';
 import { authClient } from '../lib/auth-client';
 
 export const Route = createFileRoute('/login')({
@@ -31,49 +37,70 @@ function Login() {
   }
 
   return (
-    <div className="mx-auto mt-16 max-w-sm p-6">
-      <h1 className="text-2xl font-bold">Sign in to CareOps</h1>
+    <AuthLayout
+      title="Welcome back"
+      subtitle="Sign in to your CareOps workspace."
+      footer={
+        <>
+          No account?{' '}
+          <Link
+            to="/signup"
+            className="font-medium text-primary underline-offset-4 hover:underline"
+          >
+            Create a workspace
+          </Link>
+        </>
+      }
+    >
       <form
         onSubmit={(e) => {
           void onSubmit(e);
         }}
-        className="mt-6 flex flex-col gap-4"
+        className="grid gap-4"
       >
-        <input
-          type="email"
-          required
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="rounded border p-2"
-        />
-        <input
-          type="password"
-          required
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className="rounded border p-2"
-        />
+        <div className="grid gap-1.5">
+          <Label htmlFor="login-email">Email</Label>
+          <div className="relative">
+            <Mail className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground/70" />
+            <Input
+              id="login-email"
+              type="email"
+              required
+              placeholder="Email"
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor="login-password">Password</Label>
+          <div className="relative">
+            <KeyRound className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground/70" />
+            <Input
+              id="login-password"
+              type="password"
+              required
+              placeholder="Password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+        </div>
         {error && (
-          <p className="text-red-600" data-testid="login-error">
-            {error}
-          </p>
+          <Alert variant="destructive" data-testid="login-error">
+            <CircleAlert />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
         )}
-        <button
-          type="submit"
-          disabled={pending}
-          className="rounded bg-black p-2 text-white disabled:opacity-50"
-        >
+        <Button type="submit" disabled={pending} className="w-full">
+          {pending && <Loader2 className="animate-spin" />}
           {pending ? 'Signing in…' : 'Sign in'}
-        </button>
+        </Button>
       </form>
-      <p className="mt-4 text-sm text-gray-600">
-        No account?{' '}
-        <Link to="/signup" className="underline">
-          Sign up
-        </Link>
-      </p>
-    </div>
+    </AuthLayout>
   );
 }

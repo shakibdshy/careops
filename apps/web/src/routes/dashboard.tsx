@@ -18,17 +18,24 @@ import {
   type WorkspaceMe,
 } from '@careops/shared';
 import {
-  ArrowLeft,
   BarChart3,
   CalendarDays,
+  CalendarX2,
+  CircleAlert,
+  Gauge,
   LayoutDashboard,
   TrendingUp,
+  UserX,
   Users,
 } from 'lucide-react';
+import { AppShell } from '#/components/app-shell';
+import { PageHeader } from '#/components/page-header';
+import { PageLoading } from '#/components/page-loading';
 import { Alert, AlertDescription } from '#/components/ui/alert';
 import { Badge } from '#/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '#/components/ui/card';
 import { Skeleton } from '#/components/ui/skeleton';
+import { StatCard } from '#/components/ui/stat-card';
 import { apiGet } from '#/lib/api';
 import { STATUS_META } from '#/lib/appointment-status';
 import { useWorkspace } from '#/lib/use-workspace';
@@ -72,7 +79,7 @@ function percent(value: number): string {
 function DashboardPage() {
   const me = useWorkspace('/dashboard');
   if (!me) {
-    return <div className="p-8 text-muted-foreground">Loading…</div>;
+    return <PageLoading />;
   }
   // Mounted only after the client-side auth check, so report reads and chart
   // definitions never run during SSR.
@@ -144,13 +151,14 @@ function DashboardWorkspace({ me }: { me: WorkspaceMe }) {
     const data = (breakdownQuery.data?.counts ?? []).map((row) => ({
       label: STATUS_META[row.status].label,
       count: row.count,
+      chart: STATUS_META[row.status].chart,
     }));
     return defineChart({
       marks: [
         barX(data, {
           x: 'count',
           y: 'label',
-          fill: 'var(--chart-3)',
+          fill: (datum) => datum.chart,
           inset: 2,
           maxThickness: 26,
         }),
@@ -187,36 +195,68 @@ function DashboardWorkspace({ me }: { me: WorkspaceMe }) {
   }, [utilizationQuery.data]);
 
   const todayItems = todayQuery.data?.items ?? [];
+  const breakdown = breakdownQuery.data;
 
   return (
-    <div className="mx-auto max-w-6xl p-6 lg:p-8">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <Link
-            to="/workspace"
-            className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <ArrowLeft className="size-3.5" /> Workspace
-          </Link>
-          <p className="mt-3 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-            {me.organization.name}
-          </p>
-          <h1 className="mt-1 text-3xl font-bold tracking-tight">Dashboard</h1>
-        </div>
-        <Badge variant="secondary" className="gap-1.5 px-3 py-1">
-          <LayoutDashboard className="size-3.5" />
-          Trailing {REPORT_DAYS} days
-        </Badge>
-      </header>
+    <AppShell me={me} active="dashboard">
+      <PageHeader
+        eyebrow={me.organization.name}
+        title="Dashboard"
+        description="Operational pulse for the trailing 30 days, refreshed from the live API."
+        actions={
+          <Badge variant="secondary" className="gap-1.5 px-3 py-1">
+            <LayoutDashboard className="size-3.5" />
+            Trailing {REPORT_DAYS} days
+          </Badge>
+        }
+      />
+
+      <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          className="animate-rise"
+          label="Today"
+          value={todayQuery.data ? String(todayItems.length) : '—'}
+          hint={todayItems.length === 1 ? 'appointment on the books' : 'appointments on the books'}
+          icon={CalendarDays}
+          tone="primary"
+        />
+        <StatCard
+          className="animate-rise"
+          style={{ animationDelay: '50ms' }}
+          label={`Bookings · ${REPORT_DAYS}d`}
+          value={breakdown ? String(breakdown.total) : '—'}
+          hint="across all statuses"
+          icon={TrendingUp}
+          tone="info"
+        />
+        <StatCard
+          className="animate-rise"
+          style={{ animationDelay: '100ms' }}
+          label="Cancellation rate"
+          value={breakdown ? percent(breakdown.cancellationRate) : '—'}
+          hint="share of window bookings"
+          icon={CalendarX2}
+          tone="warning"
+        />
+        <StatCard
+          className="animate-rise"
+          style={{ animationDelay: '150ms' }}
+          label="No-show rate"
+          value={breakdown ? percent(breakdown.noShowRate) : '—'}
+          hint="share of window bookings"
+          icon={UserX}
+          tone="destructive"
+        />
+      </div>
 
       <div className="mt-6 grid items-start gap-6 lg:grid-cols-3">
-        <Card
-          className="animate-in fade-in slide-in-from-bottom-2 duration-300 lg:col-span-2"
-          data-testid="chart-volume"
-        >
+        <Card className="animate-rise lg:col-span-2" data-testid="chart-volume">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <TrendingUp className="size-4 text-primary" /> Appointment volume
+            <CardTitle className="flex items-center gap-2">
+              <span className="flex size-8 items-center justify-center rounded-lg bg-chart-1/10 text-chart-1">
+                <TrendingUp className="size-4" />
+              </span>
+              Appointment volume
             </CardTitle>
             <CardDescription>Bookings per UTC day over the trailing 30 days.</CardDescription>
           </CardHeader>
@@ -236,13 +276,13 @@ function DashboardWorkspace({ me }: { me: WorkspaceMe }) {
           </CardContent>
         </Card>
 
-        <Card
-          className="animate-in fade-in slide-in-from-bottom-2 duration-300"
-          data-testid="today-schedule"
-        >
+        <Card className="animate-rise" data-testid="today-schedule">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <CalendarDays className="size-4 text-primary" /> Today&apos;s schedule
+            <CardTitle className="flex items-center gap-2">
+              <span className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <CalendarDays className="size-4" />
+              </span>
+              Today&apos;s schedule
             </CardTitle>
             <CardDescription>
               {todayQuery.data ? `${todayQuery.data.date} · UTC` : 'Today · UTC'}
@@ -252,6 +292,7 @@ function DashboardWorkspace({ me }: { me: WorkspaceMe }) {
             {todayQuery.isLoading && <Skeleton className="h-40 w-full rounded-lg" />}
             {todayQuery.isError && (
               <Alert variant="destructive">
+                <CircleAlert />
                 <AlertDescription>Could not load today&apos;s schedule.</AlertDescription>
               </Alert>
             )}
@@ -261,21 +302,21 @@ function DashboardWorkspace({ me }: { me: WorkspaceMe }) {
               </p>
             )}
             {todayQuery.data && todayItems.length > 0 && (
-              <ul className="max-h-[360px] divide-y overflow-y-auto">
+              <ul className="max-h-[360px] divide-y divide-border/60 overflow-y-auto pr-1">
                 {todayItems.map((item) => (
                   <li
                     key={item.id}
                     data-testid="today-row"
                     className="flex items-start gap-3 py-2.5"
                   >
-                    <span className="w-11 shrink-0 pt-0.5 text-sm tabular-nums text-muted-foreground">
+                    <span className="mt-0.5 w-12 shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-center font-mono text-xs tabular-nums text-muted-foreground">
                       {formatTime(item.start)}
                     </span>
                     <span className="min-w-0 flex-1">
                       <Link
                         to="/patients/$patientId"
                         params={{ patientId: item.patientId }}
-                        className="block break-words text-sm font-medium text-primary underline-offset-4 hover:underline"
+                        className="block break-words text-sm font-medium text-foreground underline-offset-4 transition-colors hover:text-primary hover:underline"
                       >
                         {patientName(item.patientId)}
                       </Link>
@@ -296,13 +337,13 @@ function DashboardWorkspace({ me }: { me: WorkspaceMe }) {
           </CardContent>
         </Card>
 
-        <Card
-          className="animate-in fade-in slide-in-from-bottom-2 duration-300"
-          data-testid="chart-status"
-        >
+        <Card className="animate-rise" data-testid="chart-status">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <BarChart3 className="size-4 text-primary" /> Status breakdown
+            <CardTitle className="flex items-center gap-2">
+              <span className="flex size-8 items-center justify-center rounded-lg bg-chart-3/10 text-chart-3">
+                <BarChart3 className="size-4" />
+              </span>
+              Status breakdown
             </CardTitle>
             <CardDescription>All seven states over the trailing 30 days.</CardDescription>
           </CardHeader>
@@ -320,7 +361,7 @@ function DashboardWorkspace({ me }: { me: WorkspaceMe }) {
               />
             </ChartFrame>
             {breakdownQuery.data && (
-              <div className="mt-4 grid grid-cols-3 gap-2 border-t pt-4 text-center">
+              <div className="mt-4 grid grid-cols-3 gap-2 border-t border-border/70 pt-4 text-center">
                 <Stat label="Total" value={String(breakdownQuery.data.total)} />
                 <Stat label="Cancelled" value={percent(breakdownQuery.data.cancellationRate)} />
                 <Stat label="No-show" value={percent(breakdownQuery.data.noShowRate)} />
@@ -329,13 +370,13 @@ function DashboardWorkspace({ me }: { me: WorkspaceMe }) {
           </CardContent>
         </Card>
 
-        <Card
-          className="animate-in fade-in slide-in-from-bottom-2 duration-300 lg:col-span-2"
-          data-testid="chart-utilization"
-        >
+        <Card className="animate-rise lg:col-span-2" data-testid="chart-utilization">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Users className="size-4 text-primary" /> Provider utilization
+            <CardTitle className="flex items-center gap-2">
+              <span className="flex size-8 items-center justify-center rounded-lg bg-chart-2/10 text-chart-2">
+                <Gauge className="size-4" />
+              </span>
+              Provider utilization
             </CardTitle>
             <CardDescription>
               Booked minutes against the documented 8h/day capacity (480 min); 100% = one
@@ -355,10 +396,17 @@ function DashboardWorkspace({ me }: { me: WorkspaceMe }) {
                 height={240}
               />
             </ChartFrame>
+            {members.length > 0 && (
+              <p className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Users className="size-3.5" />
+                {members.length} {members.length === 1 ? 'provider' : 'providers'} in this
+                organization
+              </p>
+            )}
           </CardContent>
         </Card>
       </div>
-    </div>
+    </AppShell>
   );
 }
 
@@ -381,6 +429,7 @@ function ChartFrame({
   if (isError) {
     return (
       <Alert variant="destructive">
+        <CircleAlert />
         <AlertDescription>Could not load this report. Refresh to try again.</AlertDescription>
       </Alert>
     );
@@ -388,7 +437,7 @@ function ChartFrame({
   if (isEmpty) {
     return (
       <div
-        className="flex w-full items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground"
+        className="flex w-full items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground"
         style={{ height }}
       >
         No data in this window.
@@ -401,7 +450,7 @@ function ChartFrame({
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <p className="text-lg font-semibold tabular-nums">{value}</p>
+      <p className="font-display text-lg font-semibold tabular-nums">{value}</p>
       <p className="text-xs text-muted-foreground">{label}</p>
     </div>
   );

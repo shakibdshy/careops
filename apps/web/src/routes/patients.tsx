@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { useDbClient, useLiveInfiniteQuery } from '@tanstack/react-db';
 import { createColumnHelper, tableFeatures, useTable } from '@tanstack/react-table';
@@ -7,12 +8,18 @@ import {
   type Patient,
   type WorkspaceMe,
 } from '@careops/shared';
-import { ArrowLeft, UserRoundPlus, Users } from 'lucide-react';
+import { CircleAlert, Search, UserRoundPlus, Users } from 'lucide-react';
+import { AppShell } from '#/components/app-shell';
+import { PageHeader } from '#/components/page-header';
+import { PageLoading } from '#/components/page-loading';
 import { ZodForm } from '#/components/zod-form';
 import { Alert, AlertDescription } from '#/components/ui/alert';
+import { Avatar } from '#/components/ui/avatar';
 import { Badge } from '#/components/ui/badge';
 import { Button } from '#/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '#/components/ui/card';
+import { EmptyState } from '#/components/ui/empty-state';
+import { Input } from '#/components/ui/input';
 import { Skeleton } from '#/components/ui/skeleton';
 import {
   Table,
@@ -23,6 +30,7 @@ import {
   TableRow,
 } from '#/components/ui/table';
 import { apiPost } from '#/lib/api';
+import { formatDateDisplay, todayIso } from '#/lib/dates';
 import { PATIENTS_PAGE_SIZE, patientsCollectionOptions } from '#/lib/patients-collection';
 import { useWorkspace } from '#/lib/use-workspace';
 
@@ -34,28 +42,38 @@ const columns = column.columns([
   column.accessor('firstName', {
     header: 'Patient',
     cell: (info) => (
-      <Link
-        to="/patients/$patientId"
-        params={{ patientId: info.row.original.id }}
-        className="font-medium text-primary underline-offset-4 hover:underline"
-      >
-        {info.row.original.firstName} {info.row.original.lastName}
-      </Link>
+      <span className="flex items-center gap-3">
+        <Avatar name={`${info.row.original.firstName} ${info.row.original.lastName}`} />
+        <Link
+          to="/patients/$patientId"
+          params={{ patientId: info.row.original.id }}
+          className="font-medium text-foreground underline-offset-4 transition-colors hover:text-primary hover:underline"
+        >
+          {info.row.original.firstName} {info.row.original.lastName}
+        </Link>
+      </span>
     ),
   }),
   column.accessor('dateOfBirth', {
     header: 'Date of birth',
     cell: (info) => (
-      <span className="tabular-nums text-muted-foreground">{info.getValue().slice(0, 10)}</span>
+      <span className="tabular-nums text-muted-foreground">
+        {formatDateDisplay(info.getValue())}
+      </span>
     ),
   }),
   column.accessor('phone', {
     header: 'Phone',
-    cell: (info) => info.getValue() ?? <span className="text-muted-foreground">—</span>,
+    cell: (info) =>
+      info.getValue() ? (
+        <span className="tabular-nums">{info.getValue()}</span>
+      ) : (
+        <span className="text-muted-foreground/60">—</span>
+      ),
   }),
   column.accessor('contactEmail', {
     header: 'Contact email',
-    cell: (info) => info.getValue() ?? <span className="text-muted-foreground">—</span>,
+    cell: (info) => info.getValue() ?? <span className="text-muted-foreground/60">—</span>,
   }),
 ]);
 
@@ -64,7 +82,7 @@ const EMPTY_PATIENTS: Patient[] = [];
 function PatientsPage() {
   const me = useWorkspace('/patients');
   if (!me) {
-    return <div className="p-8 text-muted-foreground">Loading…</div>;
+    return <PageLoading />;
   }
   // Mounted only after the client-side auth check, so live queries never
   // subscribe during SSR.
@@ -74,44 +92,153 @@ function PatientsPage() {
 function PatientsWorkspace({ me }: { me: WorkspaceMe }) {
   const db = useDbClient();
   const patients = db.collection(patientsCollectionOptions);
+  const [search, setSearch] = useState('');
   const live = useLiveInfiniteQuery(
     (q) => q.from({ patients }).orderBy(({ patients: patient }) => patient.id, 'asc'),
     { pageSize: PATIENTS_PAGE_SIZE },
   );
-  const table = useTable({ features, columns, data: live.data ?? EMPTY_PATIENTS });
+
+  const query = search.trim().toLowerCase();
+  const rows = (live.data ?? EMPTY_PATIENTS).filter((patient) => {
+    if (!query) return true;
+    return [patient.firstName, patient.lastName, patient.contactEmail, patient.phone]
+      .filter(Boolean)
+      .some((value) => value!.toLowerCase().includes(query));
+  });
+
+  const table = useTable({ features, columns, data: rows });
   const canCreate = me.organization.role === 'owner' || me.organization.role === 'admin';
 
   return (
-    <div className="mx-auto max-w-6xl p-6 lg:p-8">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <Link
-            to="/workspace"
-            className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <ArrowLeft className="size-3.5" /> Workspace
-          </Link>
-          <p className="mt-3 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-            {me.organization.name}
-          </p>
-          <h1 className="mt-1 text-3xl font-bold tracking-tight">Patients</h1>
-        </div>
-        <Badge variant="secondary" className="gap-1.5 px-3 py-1">
-          <Users className="size-3.5" />
-          {live.data.length} {live.data.length === 1 ? 'record' : 'records'}
-        </Badge>
-      </header>
+    <AppShell me={me} active="patients">
+      <PageHeader
+        eyebrow={me.organization.name}
+        title="Patients"
+        description="Every record is scoped to this organization and written to the audit trail."
+        actions={
+          <Badge variant="secondary" className="gap-1.5 px-3 py-1">
+            <Users className="size-3.5" />
+            {live.data.length} {live.data.length === 1 ? 'record' : 'records'}
+          </Badge>
+        }
+      />
 
       <div
         className={`mt-6 grid items-start gap-6 ${
-          canCreate ? 'lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]' : ''
+          canCreate ? 'xl:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]' : ''
         }`}
       >
+        <Card className="overflow-hidden animate-rise">
+          <div className="flex flex-wrap items-center gap-3 border-b border-border/70 p-4">
+            <div className="relative min-w-0 flex-1 sm:max-w-xs">
+              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground/70" />
+              <Input
+                type="search"
+                placeholder="Search patients…"
+                aria-label="Search patients"
+                data-testid="patient-search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="h-9 pl-9"
+              />
+            </div>
+            {query && (
+              <p className="text-xs text-muted-foreground">
+                {rows.length} {rows.length === 1 ? 'match' : 'matches'}
+              </p>
+            )}
+          </div>
+          <Table data-testid="patients-list">
+            <TableHeader>
+              {table.getHeaderGroups().map((headerGroup) => (
+                <TableRow key={headerGroup.id} className="bg-muted/50 hover:bg-muted/50">
+                  {headerGroup.headers.map((header) => (
+                    <TableHead key={header.id}>
+                      {header.isPlaceholder ? null : <table.FlexRender header={header} />}
+                    </TableHead>
+                  ))}
+                </TableRow>
+              ))}
+            </TableHeader>
+            <TableBody>
+              {live.isLoading &&
+                Array.from({ length: 4 }, (_, index) => (
+                  <TableRow key={`skeleton-${index}`}>
+                    {columns.map((_, cellIndex) => (
+                      <TableCell key={cellIndex}>
+                        <Skeleton className="h-4 w-full max-w-40" />
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))}
+              {!live.isLoading &&
+                table.getRowModel().rows.map((row) => (
+                  <TableRow key={row.id} data-testid="patient-row">
+                    {row.getAllCells().map((cell) => (
+                      <TableCell key={cell.id}>
+                        <table.FlexRender cell={cell} />
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))}
+              {!live.isLoading && table.getRowModel().rows.length === 0 && (
+                <TableRow className="hover:bg-transparent">
+                  <TableCell colSpan={columns.length}>
+                    <EmptyState
+                      icon={Users}
+                      title={query ? 'No matching patients' : 'No patients yet'}
+                      hint={
+                        query
+                          ? 'Try a different name, email or phone.'
+                          : canCreate
+                            ? 'Add the first record with the form.'
+                            : 'Records appear here once your team adds them.'
+                      }
+                    />
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+          {live.isLoadingError && (
+            <div className="p-4">
+              <Alert variant="destructive">
+                <CircleAlert />
+                <AlertDescription>Could not load patients. Refresh to try again.</AlertDescription>
+              </Alert>
+            </div>
+          )}
+          <div className="flex items-center justify-between border-t border-border/70 px-4 py-3">
+            <p className="text-xs text-muted-foreground">
+              {live.hasNextPage ? 'More records available' : 'End of list'}
+            </p>
+            {live.hasNextPage && (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={live.isFetchingNextPage}
+                data-testid="load-more"
+                onClick={() => {
+                  void live.fetchNextPage();
+                }}
+              >
+                {live.isFetchingNextPage ? 'Loading…' : 'Load more'}
+              </Button>
+            )}
+          </div>
+        </Card>
+
         {canCreate && (
-          <Card className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+          <Card
+            className="order-first animate-rise xl:order-none xl:sticky xl:top-20"
+            style={{ animationDelay: '80ms' }}
+          >
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <UserRoundPlus className="size-4 text-primary" /> New patient
+              <CardTitle className="flex items-center gap-2">
+                <span className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <UserRoundPlus className="size-4" />
+                </span>
+                New patient
               </CardTitle>
               <CardDescription>
                 Added to this organization only. Names and date of birth are required.
@@ -145,8 +272,8 @@ function PatientsWorkspace({ me }: { me: WorkspaceMe }) {
                     name: 'dateOfBirth',
                     label: 'Date of birth',
                     type: 'date',
+                    max: todayIso(),
                     testId: 'patient-date-of-birth',
-                    autoComplete: 'bday',
                   },
                   {
                     name: 'phone',
@@ -182,83 +309,7 @@ function PatientsWorkspace({ me }: { me: WorkspaceMe }) {
             </CardContent>
           </Card>
         )}
-
-        <Card className="animate-in fade-in slide-in-from-bottom-2 overflow-hidden duration-300">
-          <Table data-testid="patients-list">
-            <TableHeader>
-              {table.getHeaderGroups().map((headerGroup) => (
-                <TableRow key={headerGroup.id} className="bg-muted/50 hover:bg-muted/50">
-                  {headerGroup.headers.map((header) => (
-                    <TableHead key={header.id}>
-                      {header.isPlaceholder ? null : <table.FlexRender header={header} />}
-                    </TableHead>
-                  ))}
-                </TableRow>
-              ))}
-            </TableHeader>
-            <TableBody>
-              {live.isLoading &&
-                Array.from({ length: 4 }, (_, index) => (
-                  <TableRow key={`skeleton-${index}`}>
-                    {columns.map((_, cellIndex) => (
-                      <TableCell key={cellIndex}>
-                        <Skeleton className="h-4 w-full max-w-40" />
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))}
-              {!live.isLoading &&
-                table.getRowModel().rows.map((row) => (
-                  <TableRow
-                    key={row.id}
-                    data-testid="patient-row"
-                    className="transition-colors hover:bg-accent/40"
-                  >
-                    {row.getAllCells().map((cell) => (
-                      <TableCell key={cell.id}>
-                        <table.FlexRender cell={cell} />
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))}
-              {!live.isLoading && table.getRowModel().rows.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={columns.length} className="h-24 text-center">
-                    <span className="text-muted-foreground">
-                      No patients yet{canCreate ? ' — add the first one.' : '.'}
-                    </span>
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-          {live.isLoadingError && (
-            <div className="p-4">
-              <Alert variant="destructive">
-                <AlertDescription>Could not load patients. Refresh to try again.</AlertDescription>
-              </Alert>
-            </div>
-          )}
-          <div className="flex items-center justify-between border-t px-4 py-3">
-            <p className="text-xs text-muted-foreground">
-              {live.hasNextPage ? 'More records available' : 'End of list'}
-            </p>
-            {live.hasNextPage && (
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={live.isFetchingNextPage}
-                data-testid="load-more"
-                onClick={() => {
-                  void live.fetchNextPage();
-                }}
-              >
-                {live.isFetchingNextPage ? 'Loading…' : 'Load more'}
-              </Button>
-            )}
-          </div>
-        </Card>
       </div>
-    </div>
+    </AppShell>
   );
 }
