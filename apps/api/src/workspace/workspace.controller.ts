@@ -8,6 +8,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import type { Request } from 'express';
+import { MANAGER_ROLES } from '@careops/shared';
 import type { WorkspaceMe } from '@careops/shared';
 import { ErrorResponseDto } from '../common/error-response.dto.js';
 import { getOrgContext, getSession, OrgContextGuard, Roles } from '../auth/org-context.js';
@@ -48,7 +49,7 @@ export class WorkspaceController {
   }
 
   @Get('admin-probe')
-  @Roles('admin', 'owner')
+  @Roles(...MANAGER_ROLES)
   @ApiExcludeEndpoint()
   @ApiOperation({
     summary: 'RBAC probe (admin/owner only)',

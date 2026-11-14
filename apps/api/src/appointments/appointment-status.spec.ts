@@ -1,7 +1,11 @@
 import {
   ALLOWED_TRANSITIONS,
   appointmentStatusSchema,
+  FREED_STATUSES,
   isAllowedTransition,
+  isTerminal,
+  canReschedule,
+  SLOT_HOLDING_STATUSES,
   type AppointmentStatus,
 } from '@careops/shared';
 
@@ -40,5 +44,29 @@ describe('appointment lifecycle transition map', () => {
         expect(isAllowedTransition(terminal, to)).toBe(false);
       }
     }
+  });
+});
+
+describe('lifecycle helpers', () => {
+  it('isTerminal matches the statuses with no outgoing edges', () => {
+    for (const status of ALL_STATUSES) {
+      expect(isTerminal(status)).toBe(ALLOWED_TRANSITIONS[status].length === 0);
+    }
+  });
+
+  it('canReschedule admits exactly the Reschedule-window statuses', () => {
+    expect(canReschedule('SCHEDULED')).toBe(true);
+    expect(canReschedule('CONFIRMED')).toBe(true);
+    for (const status of ALL_STATUSES) {
+      expect(canReschedule(status)).toBe(status === 'SCHEDULED' || status === 'CONFIRMED');
+    }
+  });
+
+  it('SLOT_HOLDING_STATUSES holds every status except CANCELLED and NO_SHOW', () => {
+    expect([...SLOT_HOLDING_STATUSES].sort()).toEqual(
+      ALL_STATUSES.filter((status) => status !== 'CANCELLED' && status !== 'NO_SHOW').sort(),
+    );
+    expect([...FREED_STATUSES].sort()).toEqual(['CANCELLED', 'NO_SHOW']);
+    expect([...SLOT_HOLDING_STATUSES, ...FREED_STATUSES].sort()).toEqual([...ALL_STATUSES].sort());
   });
 });

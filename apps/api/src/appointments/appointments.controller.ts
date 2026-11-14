@@ -25,6 +25,7 @@ import {
   appointmentTransitionSchema,
   appointmentsListQuerySchema,
   createAppointmentSchema,
+  MANAGER_ROLES,
   rescheduleAppointmentSchema,
 } from '@careops/shared';
 import {
@@ -64,7 +65,7 @@ export class AppointmentsController {
   constructor(private readonly appointmentsService: AppointmentsService) {}
 
   @Post()
-  @Roles('admin', 'owner')
+  @Roles(...MANAGER_ROLES)
   @ApiOperation({
     summary: 'Book an appointment',
     description:
@@ -140,7 +141,7 @@ export class AppointmentsController {
 
   @Post(':appointmentId/status')
   @HttpCode(HttpStatus.OK)
-  @Roles('admin', 'owner')
+  @Roles(...MANAGER_ROLES)
   @ApiOperation({
     summary: 'Transition an appointment',
     description:
@@ -179,7 +180,7 @@ export class AppointmentsController {
   }
 
   @Patch(':appointmentId')
-  @Roles('admin', 'owner')
+  @Roles(...MANAGER_ROLES)
   @ApiOperation({
     summary: 'Reschedule an appointment',
     description:

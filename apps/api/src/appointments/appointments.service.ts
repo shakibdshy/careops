@@ -30,7 +30,13 @@ import type {
 } from '../notifications/notifications.tokens.js';
 import { AppointmentRepository } from './appointment.repository.js';
 import type { AppointmentDoc } from './appointment.schema.js';
-import { ALLOWED_TRANSITIONS, isAllowedTransition, RESCHEDULABLE_STATUSES } from '@careops/shared';
+import {
+  ALLOWED_TRANSITIONS,
+  canReschedule,
+  isAllowedTransition,
+  isTerminal,
+  RESCHEDULABLE_STATUSES,
+} from '@careops/shared';
 
 export interface AppointmentActor {
   id: string;
@@ -74,7 +80,7 @@ function transitionConflict(from: AppointmentStatus, to: AppointmentStatus): Con
       {
         field: 'status',
         message: `Allowed transitions from ${from}: ${
-          allowed.length > 0 ? allowed.join(', ') : 'none (terminal status)'
+          isTerminal(from) ? 'none (terminal status)' : allowed.join(', ')
         }`,
       },
     ],
@@ -327,7 +333,7 @@ export class AppointmentsService {
           throw new NotFoundException('Appointment not found');
         }
         const status = current.status as AppointmentStatus;
-        if (!RESCHEDULABLE_STATUSES.includes(status)) {
+        if (!canReschedule(status)) {
           throw notReschedulable(status);
         }
         const memberId = dto.memberId ?? current.memberId;

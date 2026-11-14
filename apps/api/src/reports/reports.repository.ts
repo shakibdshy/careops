@@ -1,12 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import type { Model } from 'mongoose';
+import { FREED_STATUSES } from '@careops/shared';
 import type { OrgRequestContext } from '../data/org-scoped.repository.js';
 import { OrgScopedRepository } from '../data/org-scoped.repository.js';
 import { AppointmentDocument, type AppointmentDoc } from '../appointments/appointment.schema.js';
 
-/** Statuses that still hold the Provider's time (same rule as the Conflict check). */
-const SLOT_HOLDING_STATUSES = { $nin: ['CANCELLED', 'NO_SHOW'] };
+/** The shared slot-holding rule (glossary: Conflict), encoded as a Mongo filter. */
+const SLOT_HOLDING_STATUS_FILTER = { $nin: [...FREED_STATUSES] };
 
 export interface StatusCountRow {
   status: string;
@@ -83,7 +84,7 @@ export class ReportsRepository extends OrgScopedRepository<AppointmentDoc> {
       .aggregate<ProviderUtilizationRow>([
         {
           $match: this.orgFilter(context, {
-            status: SLOT_HOLDING_STATUSES,
+            status: SLOT_HOLDING_STATUS_FILTER,
             start: { $gte: start, $lt: end },
           }),
         },

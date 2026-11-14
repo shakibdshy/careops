@@ -19,6 +19,7 @@ import {
 import type { Request } from 'express';
 import {
   createInvitationSchema,
+  MANAGER_ROLES,
   type CreateInvitationDto as CreateInvitationPayload,
   type Invitation,
   type OrganizationCurrent,
@@ -92,7 +93,7 @@ export class OrganizationsController {
   }
 
   @Post('invitations')
-  @Roles('admin', 'owner')
+  @Roles(...MANAGER_ROLES)
   @ApiOperation({
     summary: 'Invite a user by email (admin/owner)',
     description:

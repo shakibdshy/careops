@@ -1,6 +1,11 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { useInfiniteQuery } from '@tanstack/react-query';
-import { auditEntriesPageSchema, type AuditEntry, type WorkspaceMe } from '@careops/shared';
+import {
+  auditEntriesPageSchema,
+  canManage,
+  type AuditEntry,
+  type WorkspaceMe,
+} from '@careops/shared';
 import {
   ArrowLeft,
   ArrowRight,
@@ -61,7 +66,7 @@ function AuditTrail({ me }: { me: WorkspaceMe }) {
     getNextPageParam: (lastPage) => lastPage.nextCursor,
   });
 
-  const canBrowse = me.organization.role === 'owner' || me.organization.role === 'admin';
+  const canBrowse = canManage(me.organization.role);
   if (!canBrowse) {
     return (
       <AppShell me={me} active="audit">

@@ -21,6 +21,12 @@ A User's role-bearing membership in an Organization — owner, admin, or member.
 can belong to more than one Organization; permissions attach to the Member, not the User.
 _Avoid_: Staff, Role, Employee
 
+**Manager**:
+A Member whose role permits mutating care data — owner or admin. The shared
+`MANAGER_ROLES` / `canManage(role)` rule encodes this once; the API's `@Roles`
+guards and the web's manage affordances both consume it.
+_Avoid_: Admin, Editor, Power user
+
 **Patient**:
 An Organization-scoped record of a person receiving care — an operational record, not a
 medical chart. Two Organizations may hold records for the same real person; those are

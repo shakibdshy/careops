@@ -3,10 +3,11 @@ import { createFileRoute, Link } from '@tanstack/react-router';
 import { eq } from '@tanstack/db';
 import { useDbClient, useLiveInfiniteQuery } from '@tanstack/react-db';
 import { useQuery } from '@tanstack/react-query';
+import { canManage } from '@careops/shared';
 import { createColumnHelper, tableFeatures, useTable } from '@tanstack/react-table';
 import {
   ALLOWED_TRANSITIONS,
-  RESCHEDULABLE_STATUSES,
+  canReschedule,
   appointmentSchema,
   appointmentStatusSchema,
   createAppointmentSchema,
@@ -134,7 +135,7 @@ function AppointmentsWorkspace({ me }: { me: WorkspaceMe }) {
     { pageSize: APPOINTMENTS_PAGE_SIZE },
   );
 
-  const canManage = me.organization.role === 'owner' || me.organization.role === 'admin';
+  const manager = canManage(me.organization.role);
 
   const columns = column.columns([
     column.accessor('patientId', {
@@ -190,7 +191,7 @@ function AppointmentsWorkspace({ me }: { me: WorkspaceMe }) {
       cell: (info) => (
         <StatusActions
           appointment={info.row.original}
-          canManage={canManage}
+          canManage={manager}
           error={transitionErrors[info.row.original.id]}
           onError={(message) => setTransitionError(info.row.original.id, message)}
           onReschedule={setRescheduleTarget}
@@ -223,10 +224,10 @@ function AppointmentsWorkspace({ me }: { me: WorkspaceMe }) {
       <div
         className={cn(
           'mt-6 grid items-start gap-6',
-          canManage && 'xl:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]',
+          manager && 'xl:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]',
         )}
       >
-        {canManage && (
+        {manager && (
           <Card className="animate-rise xl:sticky xl:top-20">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -390,7 +391,7 @@ function AppointmentsWorkspace({ me }: { me: WorkspaceMe }) {
                       icon={CalendarClock}
                       title="No appointments match"
                       hint={
-                        canManage
+                        manager
                           ? 'Book the first one with the form.'
                           : 'Bookings appear here once your team adds them.'
                       }
@@ -460,7 +461,7 @@ function StatusActions({
   const [pending, setPending] = useState<AppointmentStatus | undefined>();
 
   const targets = ALLOWED_TRANSITIONS[appointment.status];
-  const reschedulable = RESCHEDULABLE_STATUSES.includes(appointment.status);
+  const reschedulable = canReschedule(appointment.status);
 
   async function transition(target: AppointmentStatus) {
     onError(undefined);

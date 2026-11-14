@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import {
+  canManage,
   createInvitationSchema,
   organizationCurrentSchema,
   type WorkspaceMe,
@@ -50,7 +51,6 @@ function Workspace() {
 
 function WorkspaceOverview({ me }: { me: WorkspaceMe }) {
   const navigate = useNavigate();
-  const canManage = me.organization.role === 'owner' || me.organization.role === 'admin';
   const orgQuery = useQuery({
     queryKey: ['organizations', 'current'],
     queryFn: () => apiGet('/api/organizations/current', organizationCurrentSchema),
@@ -85,7 +85,7 @@ function WorkspaceOverview({ me }: { me: WorkspaceMe }) {
       description: 'Book, confirm, reschedule in UTC.',
       icon: CalendarDays,
     },
-    ...(canManage
+    ...(canManage(me.organization.role)
       ? [
           {
             to: '/audit' as const,
@@ -160,7 +160,7 @@ function WorkspaceOverview({ me }: { me: WorkspaceMe }) {
                 ))}
               </ul>
             )}
-            {canManage && org && <InviteForm />}
+            {canManage(me.organization.role) && org && <InviteForm />}
           </CardContent>
         </Card>
 

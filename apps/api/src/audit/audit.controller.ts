@@ -2,10 +2,10 @@ import { Controller, Get, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import type { AuditEntriesPage } from '@careops/shared';
+import { cursorPageQuerySchema, MANAGER_ROLES, type CursorPageQuery } from '@careops/shared';
 import { getOrgContext, OrgContextGuard, Roles } from '../auth/org-context.js';
 import { ZodValidationPipe } from '../common/zod-validation.pipe.js';
 import { ErrorResponseDto } from '../common/error-response.dto.js';
-import { cursorPageQuerySchema, type CursorPageQuery } from '../common/cursor-query.js';
 import { AuditEntriesPageDto } from './audit.dto.js';
 import { AuditEntryReader } from './audit-entry.model.js';
 
@@ -27,7 +27,7 @@ export class AuditController {
   constructor(private readonly auditReader: AuditEntryReader) {}
 
   @Get()
-  @Roles('admin', 'owner')
+  @Roles(...MANAGER_ROLES)
   @ApiOperation({
     summary: 'Browse Audit Entries (owner/admin)',
     description:

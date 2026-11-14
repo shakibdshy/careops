@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { eq } from '@tanstack/db';
 import { useDbClient, useLiveQuery } from '@tanstack/react-db';
-import { updatePatientSchema, type WorkspaceMe } from '@careops/shared';
+import { canManage, updatePatientSchema, type WorkspaceMe } from '@careops/shared';
 import {
   ArrowLeft,
   CalendarDays,
@@ -56,7 +56,7 @@ function PatientDetail({ me, patientId }: { me: WorkspaceMe; patientId: string }
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | undefined>();
 
-  const canEdit = me.organization.role === 'owner' || me.organization.role === 'admin';
+  const canEdit = canManage(me.organization.role);
 
   async function onDelete() {
     if (!window.confirm('Delete this patient? The audit trail retains the record.')) {

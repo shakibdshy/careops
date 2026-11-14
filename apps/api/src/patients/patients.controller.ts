@@ -18,11 +18,16 @@ import type {
   Patient,
   UpdatePatientDto as UpdatePatientPayload,
 } from '@careops/shared';
-import { createPatientSchema, updatePatientSchema } from '@careops/shared';
+import {
+  createPatientSchema,
+  cursorPageQuerySchema,
+  MANAGER_ROLES,
+  updatePatientSchema,
+} from '@careops/shared';
+import type { CursorPageQuery } from '@careops/shared';
 import { getOrgContext, getSession, OrgContextGuard, Roles } from '../auth/org-context.js';
 import { ZodValidationPipe } from '../common/zod-validation.pipe.js';
 import { ErrorResponseDto } from '../common/error-response.dto.js';
-import { cursorPageQuerySchema, type CursorPageQuery } from '../common/cursor-query.js';
 import { CreatePatientDto, PatientDto, PatientsPageDto, UpdatePatientDto } from './patients.dto.js';
 import { PatientsService } from './patients.service.js';
 
@@ -46,7 +51,7 @@ export class PatientsController {
   constructor(private readonly patientsService: PatientsService) {}
 
   @Post()
-  @Roles('admin', 'owner')
+  @Roles(...MANAGER_ROLES)
   @ApiOperation({
     summary: 'Create a patient',
     description:
@@ -106,7 +111,7 @@ export class PatientsController {
   }
 
   @Patch(':patientId')
-  @Roles('admin', 'owner')
+  @Roles(...MANAGER_ROLES)
   @ApiOperation({
     summary: 'Update a patient (partial)',
     description:
@@ -140,7 +145,7 @@ export class PatientsController {
   }
 
   @Delete(':patientId')
-  @Roles('admin', 'owner')
+  @Roles(...MANAGER_ROLES)
   @ApiOperation({
     summary: 'Delete a patient (hard)',
     description:
