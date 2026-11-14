@@ -90,7 +90,7 @@ function WorkspaceOverview({ me }: { me: WorkspaceMe }) {
           {
             to: '/audit' as const,
             testId: 'nav-audit',
-            label: 'Audit log',
+            label: 'Audit trail',
             description: 'Append-only trail of every change.',
             icon: ScrollText,
           },
