@@ -3,6 +3,8 @@ import { useInfiniteQuery } from '@tanstack/react-query';
 import { auditEntriesPageSchema, type AuditEntry, type WorkspaceMe } from '@careops/shared';
 import {
   ArrowLeft,
+  ArrowRight,
+  ChevronRight,
   CircleAlert,
   History,
   PencilLine,
@@ -22,6 +24,7 @@ import { Card } from '#/components/ui/card';
 import { EmptyState } from '#/components/ui/empty-state';
 import { Skeleton } from '#/components/ui/skeleton';
 import { apiGet } from '#/lib/api';
+import { describeEntity, entryChanges, formatStamp } from '#/lib/audit-format';
 import { useWorkspace } from '#/lib/use-workspace';
 import { cn } from '#/lib/utils';
 
@@ -36,12 +39,7 @@ const ACTION_META: Record<
   delete: { icon: Trash2, variant: 'destructive', rail: 'bg-destructive' },
 };
 
-function formatStamp(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  const stamp = date.toISOString();
-  return `${stamp.slice(0, 10)} ${stamp.slice(11, 19)} UTC`;
-}
+const MAX_VISIBLE_ROWS = 8;
 
 function AuditPage() {
   const me = useWorkspace('/audit');
@@ -134,6 +132,9 @@ function AuditTrail({ me }: { me: WorkspaceMe }) {
           {entries.map((entry, index) => {
             const meta = ACTION_META[entry.action];
             const Icon = meta.icon;
+            const { heading, rows } = entryChanges(entry);
+            const subject = describeEntity(entry);
+            const entityTitle = entry.entity.charAt(0).toUpperCase() + entry.entity.slice(1);
             return (
               <li key={entry.id} data-testid="audit-row" className="relative animate-rise">
                 <Card
@@ -148,7 +149,15 @@ function AuditTrail({ me }: { me: WorkspaceMe }) {
                       <Icon className="size-3" />
                       {entry.action}
                     </Badge>
-                    <span className="text-sm font-medium">{entry.entity}</span>
+                    <span className="text-sm font-medium">
+                      {entityTitle}
+                      {subject && (
+                        <>
+                          {' '}
+                          · <span className="font-normal">{subject}</span>
+                        </>
+                      )}
+                    </span>
                     <span className="font-mono text-[11px] text-muted-foreground/80">
                       {entry.entityId.slice(0, 8)}…
                     </span>
@@ -160,24 +169,85 @@ function AuditTrail({ me }: { me: WorkspaceMe }) {
                     <Avatar name={entry.actorEmail} size="sm" />
                     <span className="truncate">{entry.actorEmail}</span>
                   </div>
-                  <div className="mt-3 grid gap-2 lg:grid-cols-2">
-                    <div className="rounded-lg border border-destructive/15 bg-destructive/5 p-3">
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-destructive">
-                        Before
+
+                  <div className="mt-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                      {heading}
+                    </p>
+                    {rows.length === 0 ? (
+                      <p className="mt-1.5 text-sm text-muted-foreground">
+                        No field changes recorded — see the raw payload.
                       </p>
-                      <pre className="mt-1 max-h-44 overflow-auto whitespace-pre-wrap break-all font-mono text-xs leading-relaxed text-foreground/80">
-                        − {JSON.stringify(entry.before)}
-                      </pre>
-                    </div>
-                    <div className="rounded-lg border border-success/15 bg-success/5 p-3">
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-success">
-                        After
+                    ) : (
+                      <ul className="mt-1.5 grid gap-1.5">
+                        {rows.slice(0, MAX_VISIBLE_ROWS).map((row) => (
+                          <li
+                            key={row.label}
+                            className="grid items-center gap-x-3 gap-y-1 text-sm sm:grid-cols-[minmax(9rem,auto)_1fr]"
+                          >
+                            <span className="text-muted-foreground">{row.label}</span>
+                            <span className="flex flex-wrap items-center gap-2">
+                              {row.before !== null && (
+                                <span
+                                  title={row.before}
+                                  className="max-w-[36rem] truncate rounded-md border border-destructive/15 bg-destructive/5 px-2 py-0.5 text-xs text-foreground/80"
+                                >
+                                  {row.before}
+                                </span>
+                              )}
+                              {row.before !== null && row.after !== null && (
+                                <ArrowRight
+                                  aria-hidden
+                                  className="size-3 shrink-0 text-muted-foreground"
+                                />
+                              )}
+                              {row.after !== null && (
+                                <span
+                                  title={row.after}
+                                  className="max-w-[36rem] truncate rounded-md border border-success/15 bg-success/5 px-2 py-0.5 text-xs text-foreground/80"
+                                >
+                                  {row.after}
+                                </span>
+                              )}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {rows.length > MAX_VISIBLE_ROWS && (
+                      <p className="mt-1.5 text-xs text-muted-foreground">
+                        + {rows.length - MAX_VISIBLE_ROWS} more — open the raw payload.
                       </p>
-                      <pre className="mt-1 max-h-44 overflow-auto whitespace-pre-wrap break-all font-mono text-xs leading-relaxed text-foreground/80">
-                        + {JSON.stringify(entry.after)}
-                      </pre>
-                    </div>
+                    )}
                   </div>
+
+                  <details className="group mt-3">
+                    <summary className="flex w-fit cursor-pointer select-none items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground [&::-webkit-details-marker]:hidden">
+                      <ChevronRight
+                        aria-hidden
+                        className="size-3 transition-transform group-open:rotate-90"
+                      />
+                      Raw payload
+                    </summary>
+                    <div className="mt-2 grid gap-2 lg:grid-cols-2">
+                      <div className="rounded-lg border border-destructive/15 bg-destructive/5 p-3">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-destructive">
+                          Before
+                        </p>
+                        <pre className="mt-1 max-h-44 overflow-auto whitespace-pre-wrap break-all font-mono text-xs leading-relaxed text-foreground/80">
+                          − {JSON.stringify(entry.before)}
+                        </pre>
+                      </div>
+                      <div className="rounded-lg border border-success/15 bg-success/5 p-3">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-success">
+                          After
+                        </p>
+                        <pre className="mt-1 max-h-44 overflow-auto whitespace-pre-wrap break-all font-mono text-xs leading-relaxed text-foreground/80">
+                          + {JSON.stringify(entry.after)}
+                        </pre>
+                      </div>
+                    </div>
+                  </details>
                 </Card>
               </li>
             );

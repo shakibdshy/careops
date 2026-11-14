@@ -31,7 +31,7 @@ const NAV: Array<{
   { key: 'dashboard', to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { key: 'patients', to: '/patients', label: 'Patients', icon: Users },
   { key: 'appointments', to: '/appointments', label: 'Appointments', icon: CalendarDays },
-  { key: 'audit', to: '/audit', label: 'Audit log', icon: ScrollText },
+  { key: 'audit', to: '/audit', label: 'Audit trail', icon: ScrollText },
 ];
 
 const ROLE_LABEL: Record<WorkspaceMe['organization']['role'], string> = {
