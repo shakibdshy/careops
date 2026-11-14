@@ -8,7 +8,9 @@ ElastiCache for Redis is the shared cache/queue store. Infrastructure is AWS CDK
 in-repo; GitHub Actions deploys via OIDC; Floci emulates the whole AWS stack locally. This
 topology follows from the statelessness established in Week 2 — sessions in Mongo (ADR-0007),
 cache and queue in Redis (ADR-0011), Organization re-derived per request (ADR-0006) — and
-confirmed by the 1→2→4 replica ramp (~526 → 861 → 987 reads/s, zero failures, no stickiness).
+exercised by the cross-replica freshness proof and the k6 replica-ramp runner
+(receipts in `tools/receipts/`); the live 1→2→4 ramp numbers are the one
+measurement pending a real AWS deploy ([docs/scaling.md](../docs/scaling.md)).
 
 ## Considered Options
 

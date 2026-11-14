@@ -20,3 +20,6 @@ test-results/
 # misc
 .DS_Store
 *.log
+
+# local browser-session artifacts
+.playwright-mcp/
