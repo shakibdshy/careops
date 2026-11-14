@@ -3,6 +3,19 @@ import { z } from 'zod';
 export const orgRoleSchema = z.enum(['owner', 'admin', 'member']);
 export type OrgRole = z.infer<typeof orgRoleSchema>;
 
+/**
+ * The roles permitted to mutate care data — the rule behind every @Roles guard
+ * on the API and every create/edit/manage affordance on the web. Defined once
+ * so a new role (or a rule carve-out) is a one-line change on both sides of the
+ * security boundary.
+ */
+export const MANAGER_ROLES: readonly OrgRole[] = ['admin', 'owner'];
+
+/** Whether the given role may mutate care data (the MANAGER_ROLES rule). */
+export function canManage(role: OrgRole): boolean {
+  return MANAGER_ROLES.includes(role);
+}
+
 export const organizationMemberSchema = z.object({
   id: z.string(),
   userId: z.string(),

@@ -1,3 +1,5 @@
+import type { NotificationType } from '@careops/shared';
+
 export const NOTIFICATIONS_QUEUE = Symbol('NOTIFICATIONS_QUEUE');
 
 export interface PatientCreatedJob {
@@ -27,10 +29,16 @@ export interface AppointmentReminderJob {
 
 export type NotificationJob = PatientCreatedJob | AppointmentCreatedJob | AppointmentReminderJob;
 
-/** Job names registered in BullMQ; each job id doubles as the idempotency key. */
-export const PATIENT_CREATED_JOB = 'patient.created';
-export const APPOINTMENT_CREATED_JOB = 'appointment.created';
-export const APPOINTMENT_REMINDER_JOB = 'appointment.reminder';
+/**
+ * Job names registered in BullMQ; each job id doubles as the idempotency key.
+ * The names ARE the shared notification types (notifications.ts: the enum
+ * "doubles as the BullMQ job name"), so each literal is pinned to the shared
+ * vocabulary with `satisfies`: renaming or dropping a type in the shared enum
+ * fails here at compile time instead of silently breaking queue semantics.
+ */
+export const APPOINTMENT_CREATED_JOB = 'appointment.created' satisfies NotificationType;
+export const APPOINTMENT_REMINDER_JOB = 'appointment.reminder' satisfies NotificationType;
+export const PATIENT_CREATED_JOB = 'patient.created' satisfies NotificationType;
 
 /** A reminder fires this long before the Appointment start (start − 24h). */
 export const REMINDER_LEAD_MS = 24 * 60 * 60 * 1000;

@@ -1,6 +1,7 @@
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import type { AuditEntriesPage } from '@careops/shared';
+import { DEFAULT_PAGE_LIMIT } from '@careops/shared';
 import type { OrgRequestContext } from '../data/org-scoped.repository.js';
 import { OrgScopedRepository } from '../data/org-scoped.repository.js';
 import { AuditEntryDocument, type AuditEntryDoc } from './audit-entry.schema.js';
@@ -22,7 +23,7 @@ export class AuditEntryReader extends OrgScopedRepository<AuditEntryDoc> {
   async listPage(
     context: OrgRequestContext,
     cursor?: string,
-    limit: number = 20,
+    limit: number = DEFAULT_PAGE_LIMIT,
   ): Promise<AuditEntriesPage> {
     const page = await this.findPage(context, { limit, afterId: cursor, order: 'desc' });
     return {

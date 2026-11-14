@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { cursorPage } from './cursor.js';
+import { cursorPageQuerySchema } from './pagination.js';
 
 /**
  * The Appointment lifecycle (glossary: scheduled → confirmed → checked in →
@@ -71,18 +72,13 @@ export const rescheduleAppointmentSchema = z
   );
 export type RescheduleAppointmentDto = z.infer<typeof rescheduleAppointmentSchema>;
 
-/** List filters + ADR-0008 cursor paging; malformed values are 400s, never CastErrors. */
-export const appointmentsListQuerySchema = z
-  .object({
+/** List filters + ADR-0008 cursor paging (composed from the shared pagination contract); malformed values are 400s, never CastErrors. */
+export const appointmentsListQuerySchema = cursorPageQuerySchema
+  .extend({
     status: appointmentStatusSchema.optional(),
     memberId: memberIdSchema.optional(),
     from: z.iso.datetime({ offset: true }).optional(),
     to: z.iso.datetime({ offset: true }).optional(),
-    cursor: z
-      .string()
-      .regex(/^[0-9a-fA-F]{24}$/, 'must be a valid page cursor')
-      .optional(),
-    limit: z.coerce.number().int().min(1).max(100).default(20),
   })
   .refine((query) => !query.from || !query.to || new Date(query.from) <= new Date(query.to), {
     message: 'from must not be after to',

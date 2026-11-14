@@ -8,12 +8,14 @@ import type { QueryClient } from '@tanstack/react-query';
 import {
   appointmentSchema,
   appointmentsPageSchema,
+  DEFAULT_PAGE_LIMIT,
   type Appointment,
   type AppointmentStatus,
 } from '@careops/shared';
 import { apiGet, apiPatch, apiPost } from './api';
 
-export const APPOINTMENTS_PAGE_SIZE = 20;
+/** Items per list page — the shared pagination default (ADR-0008). */
+export const APPOINTMENTS_PAGE_SIZE = DEFAULT_PAGE_LIMIT;
 
 interface AppointmentFilter {
   status?: AppointmentStatus | undefined;

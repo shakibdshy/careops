@@ -1,10 +1,16 @@
 import { collectionOptions, extractSimpleComparisons } from '@tanstack/db';
 import { createCursorPager, queryCollectionOptions } from '@tanstack/query-db-collection';
 import type { QueryClient } from '@tanstack/react-query';
-import { patientSchema, patientsPageSchema, type Patient } from '@careops/shared';
+import {
+  DEFAULT_PAGE_LIMIT,
+  patientSchema,
+  patientsPageSchema,
+  type Patient,
+} from '@careops/shared';
 import { apiDelete, apiGet, apiPatch } from './api';
 
-export const PATIENTS_PAGE_SIZE = 20;
+/** Items per list page — the shared pagination default (ADR-0008). */
+export const PATIENTS_PAGE_SIZE = DEFAULT_PAGE_LIMIT;
 
 /**
  * Patients collection (ADR-0009): one SSR-safe descriptor, materialized per

@@ -1,6 +1,7 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import type { CursorPage, CreatePatientDto, Patient, UpdatePatientDto } from '@careops/shared';
+import { DEFAULT_PAGE_LIMIT } from '@careops/shared';
 import { AuditService } from '../audit/audit.service.js';
 import type { OrgRequestContext } from '../data/org-scoped.repository.js';
 import {
@@ -16,8 +17,6 @@ export interface PatientActor {
   id: string;
   email: string;
 }
-
-const DEFAULT_PAGE_SIZE = 20;
 
 function toPatientDto(doc: PatientDoc): Patient {
   return {
@@ -153,7 +152,7 @@ export class PatientsService {
   async listPage(
     context: OrgRequestContext,
     cursor?: string,
-    limit: number = DEFAULT_PAGE_SIZE,
+    limit: number = DEFAULT_PAGE_LIMIT,
   ): Promise<CursorPage<Patient>> {
     const page = await this.patientRepository.findPage(context, {
       limit,

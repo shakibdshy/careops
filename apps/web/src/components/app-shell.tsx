@@ -12,7 +12,7 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react';
-import type { WorkspaceMe } from '@careops/shared';
+import { canManage, type WorkspaceMe } from '@careops/shared';
 import { Logo, LogoMark } from '#/components/logo';
 import { ThemeToggle } from '#/components/theme-toggle';
 import { Avatar } from '#/components/ui/avatar';
@@ -68,7 +68,7 @@ function SidebarContent({
   onNavigate?: () => void;
 }) {
   const navigate = useNavigate();
-  const canAudit = me.organization.role === 'owner' || me.organization.role === 'admin';
+  const canAudit = canManage(me.organization.role);
   const items = NAV.filter((item) => item.key !== 'audit' || canAudit);
 
   return (

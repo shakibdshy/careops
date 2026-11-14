@@ -3,6 +3,7 @@ import { createFileRoute, Link } from '@tanstack/react-router';
 import { useDbClient, useLiveInfiniteQuery } from '@tanstack/react-db';
 import { createColumnHelper, tableFeatures, useTable } from '@tanstack/react-table';
 import {
+  canManage,
   createPatientSchema,
   patientSchema,
   type Patient,
@@ -107,7 +108,7 @@ function PatientsWorkspace({ me }: { me: WorkspaceMe }) {
   });
 
   const table = useTable({ features, columns, data: rows });
-  const canCreate = me.organization.role === 'owner' || me.organization.role === 'admin';
+  const canCreate = canManage(me.organization.role);
 
   return (
     <AppShell me={me} active="patients">

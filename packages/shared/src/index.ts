@@ -14,6 +14,7 @@ export * from './cursor.js';
 export * from './errors.js';
 export * from './notifications.js';
 export * from './organizations.js';
+export * from './pagination.js';
 export * from './patients.js';
 export * from './reports.js';
 export * from './workspace.js';

@@ -2,13 +2,14 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import type { ClientSession, QueryFilter, UpdateQuery } from 'mongoose';
 import { Model } from 'mongoose';
+import { FREED_STATUSES } from '@careops/shared';
 import type { OrgRequestContext } from '../data/org-scoped.repository.js';
 import { OrgScopedRepository } from '../data/org-scoped.repository.js';
 import { AppointmentDocument, type AppointmentDoc } from './appointment.schema.js';
 import { ProviderScheduleDocument } from './provider-schedule.schema.js';
 
-/** Statuses that still hold the Provider's time (a freed slot can be rebooked). */
-const SLOT_HOLDING_STATUSES = { $nin: ['CANCELLED', 'NO_SHOW'] };
+/** The shared slot-holding rule (glossary: Conflict), encoded as a Mongo filter. */
+const SLOT_HOLDING_STATUS_FILTER = { $nin: [...FREED_STATUSES] };
 
 export interface BookingWindow {
   memberId: string;
@@ -63,7 +64,7 @@ export class AppointmentRepository extends OrgScopedRepository<AppointmentDoc> {
   ): Promise<AppointmentDoc | null> {
     const filter = this.orgFilter(context, {
       memberId: window.memberId,
-      status: SLOT_HOLDING_STATUSES,
+      status: SLOT_HOLDING_STATUS_FILTER,
       start: { $lt: window.end },
       end: { $gt: window.start },
     });
