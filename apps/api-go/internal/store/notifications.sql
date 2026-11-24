@@ -58,3 +58,17 @@ SELECT contact_email FROM patient WHERE id = $1;
 UPDATE notification_receipt
 SET status = $2, recipient = $3, provider_message_id = $4
 WHERE id = $1;
+
+-- name: FailJob :exec
+UPDATE notification_job SET state = 'failed', last_error = $2 WHERE id = $1;
+
+-- name: PurgeDeadOrgJobs :execrows
+-- Janitor: poison jobs are purged outright — dead-Organization jobs (their
+-- receipt could never be written) and anything older than 24 hours (a
+-- Notification a day late is not worth delivering; stale boot backlogs
+-- must not delay fresh deliveries).
+DELETE FROM notification_job
+WHERE NOT EXISTS (
+  SELECT 1 FROM organization o
+  WHERE o.id = (payload->>'organizationId')::uuid
+) OR created_at < now() - interval '24 hours';

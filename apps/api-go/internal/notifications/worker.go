@@ -39,7 +39,9 @@ type Worker struct {
 
 func (w *Worker) queries() *store.Queries { return store.New(w.Pool) }
 
-// Run polls until ctx is cancelled.
+// Run polls until ctx is cancelled. While jobs remain, it drains
+// continuously (a boot-time backlog must not delay fresh deliveries);
+// otherwise it waits on the ticker.
 func (w *Worker) Run(ctx context.Context) {
 	ticker := time.NewTicker(w.PollEvery)
 	defer ticker.Stop()
@@ -48,29 +50,58 @@ func (w *Worker) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			w.drainOnce(ctx)
+			for {
+				claimed, err := w.drainOnce(ctx)
+				if err != nil {
+					slog.Warn("notification drain failed", "err", err)
+					break
+				}
+				if !claimed {
+					break
+				}
+			}
 		}
 	}
 }
 
-func (w *Worker) drainOnce(ctx context.Context) {
+// drainOnce claims and processes one batch; reports whether the batch was
+// non-empty (more work may be waiting).
+func (w *Worker) drainOnce(ctx context.Context) (bool, error) {
 	// The janitor first: jobs abandoned by a crashed replica go back to
-	// pending before the claim pass.
+	// pending, and poison jobs (Organization torn down — the receipt could
+	// never be written) are purged outright, before the claim pass.
 	if _, err := w.queries().RequeueStuckJobs(ctx); err != nil {
 		slog.Warn("notification janitor failed", "err", err)
+	}
+	if _, err := w.queries().PurgeDeadOrgJobs(ctx); err != nil {
+		slog.Warn("notification janitor purge failed", "err", err)
 	}
 
 	jobs, err := w.queries().ClaimDueJobs(ctx, w.BatchSize)
 	if err != nil {
-		slog.Warn("notification poll failed", "err", err)
-		return
+		return false, err
+	}
+	if len(jobs) == 0 {
+		return false, nil
 	}
 	for _, job := range jobs {
 		if err := w.process(ctx, job); err != nil {
 			slog.Warn("notification processing failed", "jobId", job.ID, "err", err)
 			// At-least-once: a failed attempt goes back to pending with a
-			// short backoff; the receipt's unique index keeps redelivery
-			// from double-sending.
+			// short backoff — until the retry budget is spent, then the job
+			// is dead-lettered (state failed) so poison jobs (e.g. rows
+			// whose Organization was torn down) can't churn the queue
+			// forever. The receipt's unique index keeps redelivery from
+			// double-sending.
+			if job.Attempts >= 5 {
+				if err := w.queries().FailJob(ctx, store.FailJobParams{
+					ID:        job.ID,
+					LastError: pgtype.Text{String: err.Error(), Valid: true},
+				}); err != nil {
+					slog.Warn("notification dead-letter failed", "jobId", job.ID, "err", err)
+				}
+				continue
+			}
 			if err := w.queries().RequeueJob(ctx, store.RequeueJobParams{
 				ID:             job.ID,
 				BackoffSeconds: pgtype.Float8{Float64: float64(5 * job.Attempts), Valid: true},
@@ -80,6 +111,7 @@ func (w *Worker) drainOnce(ctx context.Context) {
 			}
 		}
 	}
+	return true, nil
 }
 
 // process delivers one job inside the payload's Organization scope (RLS

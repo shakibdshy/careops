@@ -31,6 +31,7 @@ func TestLoad(t *testing.T) {
 				CommitOpenAPIDir:      "../../packages/contract/openapi",
 				DatabaseURL:           testDB,
 				MigrationsDatabaseURL: testOwnerDB,
+				RedisURL:              "redis://localhost:6379",
 				TrustedOrigins:        []string{"http://localhost:3000"},
 				SMTPURL:               "smtp://localhost:1025",
 				MailFrom:              "CareOps <no-reply@careops.local>",
@@ -45,12 +46,14 @@ func TestLoad(t *testing.T) {
 				"CONTRACT_OPENAPI_DIR":    "/app/openapi",
 				"DATABASE_URL":            testDB,
 				"MIGRATIONS_DATABASE_URL": testOwnerDB,
+				"REDIS_URL":               "redis://localhost:6400",
 			},
 			want: Config{
 				Port:                  8080,
 				ServiceName:           "careops-api-staging",
 				Implementation:        "go",
 				CommitOpenAPIDir:      "/app/openapi",
+				RedisURL:              "redis://localhost:6400",
 				DatabaseURL:           testDB,
 				MigrationsDatabaseURL: testOwnerDB,
 				TrustedOrigins:        []string{"http://localhost:3000"},
@@ -82,7 +85,7 @@ func TestLoad(t *testing.T) {
 
 	envKeys := []string{
 		"PORT", "SERVICE_NAME", "IMPLEMENTATION", "CONTRACT_OPENAPI_DIR",
-		"DATABASE_URL", "MIGRATIONS_DATABASE_URL",
+		"DATABASE_URL", "MIGRATIONS_DATABASE_URL", "REDIS_URL",
 	}
 
 	for _, tt := range tests {

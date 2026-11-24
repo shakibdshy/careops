@@ -12,6 +12,7 @@ sql:
       - internal/store/auth.sql
       - internal/store/appointments.sql
       - internal/store/notifications.sql
+      - internal/store/reports.sql
     gen:
       go:
         package: store

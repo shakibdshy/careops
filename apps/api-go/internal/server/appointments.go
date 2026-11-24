@@ -270,6 +270,7 @@ func (s *Server) AppointmentsControllerCreate(w http.ResponseWriter, r *http.Req
 		if err := notifications.EnqueueBooking(ctx, tx, org.OrganizationID, auth.UIDString(row.ID), body.PatientID, start); err != nil {
 			return err
 		}
+		bumpGeneration(ctx, tx, org.OrganizationID)
 		return writeAuditEntry(ctx, queries, org, "create", "appointment", auth.UIDString(row.ID),
 			nil, appointmentView(row).auditSnapshot())
 	})
@@ -366,6 +367,7 @@ func (s *Server) AppointmentsControllerTransition(w http.ResponseWriter, r *http
 				return err
 			}
 		}
+		bumpGeneration(ctx, tx, org.OrganizationID)
 		return writeAuditEntry(ctx, queries, org, "update", "appointment", auth.UIDString(after.ID),
 			appointmentView(before).auditSnapshot(), appointmentView(after).auditSnapshot())
 	})

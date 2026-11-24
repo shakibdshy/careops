@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 	"github.com/shakibdshy/careops/api-go/gen"
 	"github.com/shakibdshy/careops/api-go/internal/auth"
 	"github.com/shakibdshy/careops/api-go/internal/store"
@@ -37,6 +38,8 @@ type Config struct {
 	Pool *pgxpool.Pool
 	// Auth carries the identity-plane service (Go-T09).
 	Auth *auth.Service
+	// RDB is the Redis client backing the report cache (nil = uncached).
+	RDB *redis.Client
 	// TrustedOrigins names the origins state-changing auth routes accept.
 	TrustedOrigins []string
 }
@@ -47,10 +50,15 @@ type Config struct {
 type Server struct {
 	cfg  Config
 	auth *auth.Service
+	rdb  *redis.Client
 }
 
 func New(cfg Config) *Server {
-	return &Server{cfg: cfg, auth: cfg.Auth}
+	var rdb *redis.Client
+	if cfg.RDB != nil {
+		rdb = cfg.RDB
+	}
+	return &Server{cfg: cfg, auth: cfg.Auth, rdb: rdb}
 }
 
 func writeJSON(w http.ResponseWriter, status int, body any) {
@@ -59,17 +67,6 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 	if err := json.NewEncoder(w).Encode(body); err != nil {
 		slog.Error("encode response", "err", err)
 	}
-}
-
-// notImplemented is the ledgered-route answer. Only the reports stubs remain
-// until Go-T14 (notifications embed their own handlers), so the area is
-// stated at the call site inside the body.
-func (s *Server) notImplemented(w http.ResponseWriter) {
-	writeJSON(w, http.StatusNotImplemented, map[string]any{
-		"statusCode": http.StatusNotImplemented,
-		"message":    "not implemented in the Go replica yet (parity ledger)",
-		"errors":     []any{},
-	})
 }
 
 // Health reports status, the shared service identity, the implementation,
@@ -263,22 +260,6 @@ func (s *Server) OrganizationsControllerInvitation(w http.ResponseWriter, r *htt
 		"status":         invitation.Status,
 		"organizationId": uidString(invitation.OrganizationID),
 	})
-}
-
-func (s *Server) ReportsControllerDailyVolume(w http.ResponseWriter, _ *http.Request, _ gen.ReportsControllerDailyVolumeParams) {
-	s.notImplemented(w)
-}
-
-func (s *Server) ReportsControllerProviderUtilization(w http.ResponseWriter, _ *http.Request, _ gen.ReportsControllerProviderUtilizationParams) {
-	s.notImplemented(w)
-}
-
-func (s *Server) ReportsControllerStatusBreakdown(w http.ResponseWriter, _ *http.Request, _ gen.ReportsControllerStatusBreakdownParams) {
-	s.notImplemented(w)
-}
-
-func (s *Server) ReportsControllerToday(w http.ResponseWriter, _ *http.Request) {
-	s.notImplemented(w)
 }
 
 // WorkspaceControllerMe answers who the caller is acting as: the verified

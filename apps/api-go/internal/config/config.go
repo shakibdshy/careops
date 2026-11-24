@@ -38,6 +38,8 @@ type Config struct {
 	SMTPURL string
 	// MailFrom is the envelope sender for outgoing notifications.
 	MailFrom string
+	// RedisURL is the cache endpoint for the reports (ADR-0011).
+	RedisURL string
 }
 
 func Load() (Config, error) {
@@ -71,6 +73,10 @@ func Load() (Config, error) {
 	cfg.SMTPURL = "smtp://localhost:1025"
 	if v := os.Getenv("SMTP_URL"); v != "" {
 		cfg.SMTPURL = v
+	}
+	cfg.RedisURL = "redis://localhost:6379"
+	if v := os.Getenv("REDIS_URL"); v != "" {
+		cfg.RedisURL = v
 	}
 	cfg.MailFrom = "CareOps <no-reply@careops.local>"
 	if v := os.Getenv("MAIL_FROM"); v != "" {

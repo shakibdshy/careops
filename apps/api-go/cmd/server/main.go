@@ -10,12 +10,14 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strconv"
 	"syscall"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"github.com/shakibdshy/careops/api-go/gen"
 	"github.com/shakibdshy/careops/api-go/internal/auth"
 	"github.com/shakibdshy/careops/api-go/internal/config"
@@ -23,6 +25,14 @@ import (
 	"github.com/shakibdshy/careops/api-go/internal/notifications"
 	"github.com/shakibdshy/careops/api-go/internal/server"
 )
+
+// redisAddr extracts host:port from a redis:// URL for go-redis options.
+func redisAddr(redisURL string) string {
+	if parsed, err := url.Parse(redisURL); err == nil && parsed.Host != "" {
+		return parsed.Host
+	}
+	return "localhost:6379"
+}
 
 func main() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
@@ -64,6 +74,7 @@ func main() {
 	}
 	go worker.Run(workerCtx)
 
+	rdb := redis.NewClient(&redis.Options{Addr: redisAddr(cfg.RedisURL)})
 	srv := server.New(server.Config{
 		ServiceName:      cfg.ServiceName,
 		Implementation:   cfg.Implementation,
@@ -71,6 +82,7 @@ func main() {
 		Pool:             pool,
 		Auth:             auth.NewService(pool),
 		TrustedOrigins:   cfg.TrustedOrigins,
+		RDB:              rdb,
 	})
 
 	mux := http.NewServeMux()

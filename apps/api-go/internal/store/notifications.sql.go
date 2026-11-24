@@ -87,6 +87,20 @@ func (q *Queries) EnqueueNotificationJob(ctx context.Context, arg EnqueueNotific
 	return err
 }
 
+const failJob = `-- name: FailJob :exec
+UPDATE notification_job SET state = 'failed', last_error = $2 WHERE id = $1
+`
+
+type FailJobParams struct {
+	ID        int64
+	LastError pgtype.Text
+}
+
+func (q *Queries) FailJob(ctx context.Context, arg FailJobParams) error {
+	_, err := q.db.Exec(ctx, failJob, arg.ID, arg.LastError)
+	return err
+}
+
 const insertReceiptIfNew = `-- name: InsertReceiptIfNew :one
 INSERT INTO notification_receipt (organization_id, kind, entity_id, status, recipient, provider_message_id)
 VALUES ($1, $2, $3, $4, $5, $6)
@@ -128,6 +142,26 @@ func (q *Queries) PatientContactEmail(ctx context.Context, id pgtype.UUID) (pgty
 	var contact_email pgtype.Text
 	err := row.Scan(&contact_email)
 	return contact_email, err
+}
+
+const purgeDeadOrgJobs = `-- name: PurgeDeadOrgJobs :execrows
+DELETE FROM notification_job
+WHERE NOT EXISTS (
+  SELECT 1 FROM organization o
+  WHERE o.id = (payload->>'organizationId')::uuid
+) OR created_at < now() - interval '24 hours'
+`
+
+// Janitor: poison jobs are purged outright — dead-Organization jobs (their
+// receipt could never be written) and anything older than 24 hours (a
+// Notification a day late is not worth delivering; stale boot backlogs
+// must not delay fresh deliveries).
+func (q *Queries) PurgeDeadOrgJobs(ctx context.Context) (int64, error) {
+	result, err := q.db.Exec(ctx, purgeDeadOrgJobs)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const requeueJob = `-- name: RequeueJob :exec

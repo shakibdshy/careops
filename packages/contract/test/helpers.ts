@@ -20,9 +20,7 @@ export const BASE_URL = process.env.CONTRACT_BASE_URL ?? 'http://localhost:3001'
  * shrink honestly (remove the entry when its ticket lands). The reference
  * implements everything, so it runs every case plainly.
  */
-export const LEDGER: Record<string, string> = {
-  reports: 'Go-T14',
-};
+export const LEDGER: Record<string, string> = {};
 
 export const skipIfLedgered = (area: string): boolean => TARGET === 'go' && area in LEDGER;
 

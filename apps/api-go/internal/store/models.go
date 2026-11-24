@@ -103,6 +103,11 @@ type Patient struct {
 	UpdatedAt      pgtype.Timestamptz
 }
 
+type ReportGeneration struct {
+	OrganizationID pgtype.UUID
+	Generation     int64
+}
+
 type Session struct {
 	ID                   pgtype.UUID
 	UserID               pgtype.UUID
