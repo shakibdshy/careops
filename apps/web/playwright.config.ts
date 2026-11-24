@@ -1,7 +1,11 @@
 import { defineConfig } from '@playwright/test';
 
-const API_PORT = 3001;
-const WEB_PORT = 3000;
+const API_PORT = Number(process.env.API_PORT ?? 3001);
+// Overridable so the suite can dodge an already-occupied dev port (a second
+// project squatting on :3000 must not be reused by mistake).
+const WEB_PORT = Number(process.env.WEB_PORT ?? 3000);
+// Point the web proxy at the Go replica for the badge's Go-origin run.
+const API_PROXY_TARGET = process.env.API_PROXY_TARGET;
 
 /**
  * Browser tests run against the real stack: API (webServer) and the web app.
@@ -27,9 +31,10 @@ export default defineConfig({
       timeout: 90_000,
     },
     {
-      command: 'bun run dev',
+      command: `bunx vite dev --port ${WEB_PORT} --strictPort`,
+      ...(API_PROXY_TARGET ? { env: { API_PROXY_TARGET } } : {}),
       port: WEB_PORT,
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: false,
       timeout: 90_000,
     },
   ],
