@@ -64,7 +64,7 @@ and a keyless CI/CD pipeline — with receipts for every performance claim.
 | CI/CD    | GitHub Actions — gates per PR; keyless OIDC deploy on merge to `main`                         |
 | Docs     | Swagger UI at **[/api/docs](http://localhost:3001/api/docs)**                                 |
 
-Decisions and their trade-offs live in [docs/adr/](docs/adr) (12 ADRs); domain
+Decisions and their trade-offs live in [docs/adr/](docs/adr) (20 ADRs); domain
 language in [GLOSSARY.md](GLOSSARY.md).
 
 ## Architecture
@@ -86,7 +86,7 @@ infra/    AWS CDK stack — Fargate (API + web SSR) behind one ALB, CloudFront,
           ElastiCache, Secrets Manager; also deploys to the Floci AWS emulator
 tools/    Receipt runners — index explain, N+1, cache, k6, lighthouse,
           origin proof; measured outputs in tools/receipts/
-docs/     12 ADRs, performance + scaling narratives
+docs/     20 ADRs, performance + scaling narratives
 ```
 
 - **Multi-tenancy**: discriminator key (`organizationId` on every domain
