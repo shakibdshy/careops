@@ -1,0 +1,22 @@
+{
+  "scenario": "k6 dashboard: 10 VUs, 30s, the four report reads + patients list, warm cache",
+  "dataset": "identical fixtures per backend: 40 patients x 3 appointments, one demo org",
+  "environment": "local docker compose (mongo rs0 + postgres 17 + redis 7), both APIs native, measured 2026-11-25",
+  "honesty": "local numbers, not AWS; different persistence engines (Mongo vs PostgreSQL) and runtimes (Node vs Go) behind one identical HTTP contract",
+  "results": {
+    "nestjs": {
+      "requestsPerSecond": 141.6,
+      "totalRequests": 4281,
+      "failureRate": 0,
+      "p95ms": 42.1,
+      "medianMs": 15.8
+    },
+    "go": {
+      "requestsPerSecond": 173.1,
+      "totalRequests": 5201,
+      "failureRate": 0,
+      "p95ms": 13.4,
+      "medianMs": 6.8
+    }
+  }
+}

@@ -181,3 +181,32 @@ report reads above are single-digit ms).
   and normalization make its signal defensible rather than raw.
 - No number here is a target or an SLA. They are what this code measured on
   this hardware, with the command to reproduce them.
+
+## 5. The two backends, same contract, measured side by side
+
+The Go replica (ADR-0013/0014) serves the identical HTTP contract from
+PostgreSQL. Both backends were measured on this machine with the same k6
+dashboard scenario (10 VUs, 30 s: the four report reads plus the patients
+list, warm caches), against the same demo dataset — 40 patients × 3
+appointments loaded through each API (tools/parity-fixtures.mjs, receipts in
+`tools/receipts/comparison/`).
+
+| backend          | requests/s |     p95 |  median | failures |
+| ---------------- | ---------: | ------: | ------: | -------- |
+| NestJS · MongoDB |      141.6 | 42.1 ms | 15.8 ms | 0        |
+| Go · PostgreSQL  |      173.1 | 13.4 ms |  6.8 ms | 0        |
+
+- The Go median is ~2.3× lower and p95 ~3× lower under this load. Part of
+  that is the runtime (compiled binary vs JIT), part is the data plane
+  (the Go reports are direct SQL aggregations over indexes; the reference
+  adds a Node→Mongo driver hop and MongoDB's pipeline execution).
+- Zero failures on both: the full functional contract (auth, tenancy,
+  booking conflicts) held under load on both implementations.
+- Query plans for the Go report queries are receipted alongside
+  (`tools/receipts/comparison/go-plan-*.txt`): the daily-volume zero-fill
+  plan is a bounded index/series scan, not a seq scan of the table.
+
+This is a local measurement on one machine — the same honesty rule as every
+other number in this repo. It demonstrates that the replica is a real
+second implementation with real performance characteristics, not that one
+database is universally faster than the other.
