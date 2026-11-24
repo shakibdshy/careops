@@ -61,12 +61,14 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 	}
 }
 
-func (s *Server) notImplemented(w http.ResponseWriter, area string) {
+// notImplemented is the ledgered-route answer. Only the reports stubs remain
+// until Go-T14 (notifications embed their own handlers), so the area is
+// stated at the call site inside the body.
+func (s *Server) notImplemented(w http.ResponseWriter) {
 	writeJSON(w, http.StatusNotImplemented, map[string]any{
 		"statusCode": http.StatusNotImplemented,
 		"message":    "not implemented in the Go replica yet (parity ledger)",
 		"errors":     []any{},
-		"_area":      area,
 	})
 }
 
@@ -264,19 +266,19 @@ func (s *Server) OrganizationsControllerInvitation(w http.ResponseWriter, r *htt
 }
 
 func (s *Server) ReportsControllerDailyVolume(w http.ResponseWriter, _ *http.Request, _ gen.ReportsControllerDailyVolumeParams) {
-	s.notImplemented(w, "reports")
+	s.notImplemented(w)
 }
 
 func (s *Server) ReportsControllerProviderUtilization(w http.ResponseWriter, _ *http.Request, _ gen.ReportsControllerProviderUtilizationParams) {
-	s.notImplemented(w, "reports")
+	s.notImplemented(w)
 }
 
 func (s *Server) ReportsControllerStatusBreakdown(w http.ResponseWriter, _ *http.Request, _ gen.ReportsControllerStatusBreakdownParams) {
-	s.notImplemented(w, "reports")
+	s.notImplemented(w)
 }
 
 func (s *Server) ReportsControllerToday(w http.ResponseWriter, _ *http.Request) {
-	s.notImplemented(w, "reports")
+	s.notImplemented(w)
 }
 
 // WorkspaceControllerMe answers who the caller is acting as: the verified
