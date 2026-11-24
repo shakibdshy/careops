@@ -7,7 +7,9 @@ version: '2'
 sql:
   - engine: postgresql
     schema: internal/db/migrations
-    queries: internal/store/patients.sql
+    queries:
+      - internal/store/patients.sql
+      - internal/store/auth.sql
     gen:
       go:
         package: store

@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/shakibdshy/careops/api-go/gen"
+	"github.com/shakibdshy/careops/api-go/internal/auth"
 	"github.com/shakibdshy/careops/api-go/internal/config"
 	"github.com/shakibdshy/careops/api-go/internal/db"
 	"github.com/shakibdshy/careops/api-go/internal/server"
@@ -54,6 +55,8 @@ func main() {
 		Implementation:   cfg.Implementation,
 		CommitOpenAPIDir: cfg.CommitOpenAPIDir,
 		Pool:             pool,
+		Auth:             auth.NewService(pool),
+		TrustedOrigins:   cfg.TrustedOrigins,
 	})
 
 	mux := http.NewServeMux()

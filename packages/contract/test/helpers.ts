@@ -21,8 +21,6 @@ export const BASE_URL = process.env.CONTRACT_BASE_URL ?? 'http://localhost:3001'
  * implements everything, so it runs every case plainly.
  */
 export const LEDGER: Record<string, string> = {
-  auth: 'Go-T09',
-  organizations: 'Go-T09',
   patients: 'Go-T11',
   appointments: 'Go-T12',
   notifications: 'Go-T13',

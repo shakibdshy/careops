@@ -36,6 +36,17 @@ type Organization struct {
 	Name        string
 	OwnerUserID pgtype.UUID
 	CreatedAt   time.Time
+	Slug        pgtype.Text
+}
+
+type OrganizationInvitation struct {
+	ID             pgtype.UUID
+	OrganizationID pgtype.UUID
+	Email          string
+	Role           string
+	Status         string
+	InviterID      pgtype.UUID
+	CreatedAt      time.Time
 }
 
 type OrganizationMember struct {
@@ -56,4 +67,13 @@ type Patient struct {
 	ContactEmail   pgtype.Text
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
+}
+
+type Session struct {
+	ID                   pgtype.UUID
+	UserID               pgtype.UUID
+	TokenHash            string
+	ActiveOrganizationID pgtype.UUID
+	ExpiresAt            time.Time
+	CreatedAt            time.Time
 }

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 )
 
 // Config carries everything the server needs to boot. DATABASE_URL and
@@ -31,6 +32,8 @@ type Config struct {
 	// MigrationsDatabaseURL is the owner connection string used by the
 	// migration runner (MIGRATIONS_DATABASE_URL).
 	MigrationsDatabaseURL string
+	// TrustedOrigins are the origins state-changing auth routes accept.
+	TrustedOrigins []string
 }
 
 func Load() (Config, error) {
@@ -68,6 +71,21 @@ func Load() (Config, error) {
 	cfg.MigrationsDatabaseURL = os.Getenv("MIGRATIONS_DATABASE_URL")
 	if cfg.MigrationsDatabaseURL == "" {
 		return cfg, errors.New("MIGRATIONS_DATABASE_URL: required (the owner connection for the migration runner)")
+	}
+
+	// Trusted origins for state-changing auth routes (BetterAuth semantics):
+	// the local web dev origin by default, plus BETTER_AUTH_URL and any
+	// TRUSTED_ORIGINS csv for named deployments.
+	cfg.TrustedOrigins = []string{"http://localhost:3000"}
+	if v := os.Getenv("BETTER_AUTH_URL"); v != "" {
+		cfg.TrustedOrigins = append(cfg.TrustedOrigins, v)
+	}
+	if v := os.Getenv("TRUSTED_ORIGINS"); v != "" {
+		for _, origin := range strings.Split(v, ",") {
+			if trimmed := strings.TrimSpace(origin); trimmed != "" {
+				cfg.TrustedOrigins = append(cfg.TrustedOrigins, trimmed)
+			}
+		}
 	}
 	return cfg, nil
 }

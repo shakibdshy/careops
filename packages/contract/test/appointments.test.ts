@@ -112,7 +112,7 @@ describe('appointments (conformance)', () => {
   };
 
   beforeAll(async () => {
-    await ledgerProbe(AREA, async () => {
+    await ledgerProbe('organizations', async () => {
       owner = await Session.signUp('Appointments Owner');
       member = await Session.signUp('Appointments Member');
       stranger = await Session.signUp('Appointments Stranger');
@@ -136,10 +136,6 @@ describe('appointments (conformance)', () => {
         ).status,
       ).toBe(200);
 
-      const patientRes = await owner.post('/api/patients', validPatient);
-      expect(patientRes.status).toBe(201);
-      patientId = parseBody(patientSchema, await patientRes.json()).id;
-
       // Provider ids from the API's own member surface — the exact ids the
       // booking endpoint resolves against (opaque by contract).
       const current = parseBody(
@@ -156,6 +152,15 @@ describe('appointments (conformance)', () => {
       }
       ownerMemberId = ownerMember.id;
       memberMemberId = memberMember.id;
+    });
+
+    // The appointment fixture patient is a PATIENTS capability, so it runs
+    // under its own probe: when patients are ledgered for Go the id stays
+    // empty and the ledgered appointment cases fail-and-swallow on it.
+    await ledgerProbe('patients', async () => {
+      const patientRes = await owner.post('/api/patients', validPatient);
+      expect(patientRes.status).toBe(201);
+      patientId = parseBody(patientSchema, await patientRes.json()).id;
     });
   });
 

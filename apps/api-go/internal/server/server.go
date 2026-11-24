@@ -13,10 +13,13 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/shakibdshy/careops/api-go/gen"
+	"github.com/shakibdshy/careops/api-go/internal/auth"
+	"github.com/shakibdshy/careops/api-go/internal/store"
 
 	_ "embed"
 )
@@ -32,17 +35,22 @@ type Config struct {
 	// Pool is the restricted app-role pool; health reports its reachability
 	// under the `postgres` dependency key (the stated parity exception).
 	Pool *pgxpool.Pool
+	// Auth carries the identity-plane service (Go-T09).
+	Auth *auth.Service
+	// TrustedOrigins names the origins state-changing auth routes accept.
+	TrustedOrigins []string
 }
 
 // Server implements gen.ServerInterface. Domain methods are explicit 501
 // stubs; each names its area, matching the parity ledger entries in
 // packages/contract. Health and the document serving are real.
 type Server struct {
-	cfg Config
+	cfg  Config
+	auth *auth.Service
 }
 
 func New(cfg Config) *Server {
-	return &Server{cfg: cfg}
+	return &Server{cfg: cfg, auth: cfg.Auth}
 }
 
 func writeJSON(w http.ResponseWriter, status int, body any) {
@@ -118,13 +126,27 @@ func (s *Server) DocsPage(w http.ResponseWriter, _ *http.Request) {
 // admin/owner members. Role resolution arrives with Go-T09; until then the
 // probe answers 501 like every other ledgered route (the conformance RBAC
 // cases run against it).
-func (s *Server) AdminProbe(w http.ResponseWriter, _ *http.Request) {
-	s.notImplemented(w, "organizations")
+// AdminProbe mirrors the reference's docs-excluded RBAC probe: 200 only
+// for admin/owner members, the shared taxonomy's 403 otherwise, with the
+// reference's exact message shape.
+func (s *Server) AdminProbe(w http.ResponseWriter, r *http.Request) {
+	org, failure := s.resolve(r)
+	if failure != nil {
+		failure.write(w)
+		return
+	}
+	if !managerRoles[org.Role] {
+		writeTaxonomy(w, http.StatusForbidden, org.forbiddenMessage())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
-// ExtraRoutes registers the surface that is intentionally absent from the
-// committed document (the reference excludes it from OpenAPI too).
+// ExtraRoutes registers the surfaces that live outside the generated
+// interface: the BetterAuth-compatible auth routes (Go-T09) and the
+// docs-excluded RBAC probe (excluded from the reference's OpenAPI too).
 func (s *Server) ExtraRoutes(mux *http.ServeMux) {
+	s.registerAuthRoutes(mux)
 	mux.HandleFunc("GET /api/workspace/admin-probe", s.AdminProbe)
 }
 
@@ -156,16 +178,113 @@ func (s *Server) AuditControllerList(w http.ResponseWriter, _ *http.Request) {
 	s.notImplemented(w, "audit")
 }
 
-func (s *Server) OrganizationsControllerCurrent(w http.ResponseWriter, _ *http.Request) {
-	s.notImplemented(w, "organizations")
+// OrganizationsControllerCurrent serves the RBAC surface: the active
+// Organization and every member with their role (the org-current schema).
+func (s *Server) OrganizationsControllerCurrent(w http.ResponseWriter, r *http.Request) {
+	org, failure := s.resolve(r)
+	if failure != nil {
+		failure.write(w)
+		return
+	}
+
+	members, err := store.New(s.cfg.Pool).ListMembers(r.Context(), uuidParam(org.OrganizationID))
+	if err != nil {
+		writeTaxonomy(w, http.StatusInternalServerError, "failed to list members")
+		return
+	}
+	memberViews := make([]map[string]any, 0, len(members))
+	for _, m := range members {
+		memberViews = append(memberViews, map[string]any{
+			"id":     uidString(m.ID),
+			"userId": uidString(m.UserID),
+			"email":  m.Email,
+			"name":   m.Name,
+			"role":   normalizeRole(m.Role),
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"id":      org.OrganizationID,
+		"name":    org.OrganizationName,
+		"slug":    org.Slug,
+		"members": memberViews,
+	})
 }
 
-func (s *Server) OrganizationsControllerInvite(w http.ResponseWriter, _ *http.Request) {
-	s.notImplemented(w, "organizations")
+// OrganizationsControllerInvite creates a pending invitation. Manager-only
+// (the shared MANAGER_ROLES rule), validated with field-level taxonomy
+// errors exactly like the reference.
+func (s *Server) OrganizationsControllerInvite(w http.ResponseWriter, r *http.Request) {
+	org, failure := s.resolve(r)
+	if failure != nil {
+		failure.write(w)
+		return
+	}
+	if !managerRoles[org.Role] {
+		writeTaxonomy(w, http.StatusForbidden, org.forbiddenMessage())
+		return
+	}
+	var body struct {
+		Email string `json:"email"`
+		Role  string `json:"role"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeTaxonomy(w, http.StatusBadRequest, "request body is not valid JSON")
+		return
+	}
+	fieldErrors := []map[string]string{}
+	if !validEmail(body.Email) {
+		fieldErrors = append(fieldErrors, map[string]string{"field": "email", "message": "must be a valid email address"})
+	}
+	if body.Role != "admin" && body.Role != "member" {
+		fieldErrors = append(fieldErrors, map[string]string{"field": "role", "message": "must be admin or member"})
+	}
+	if len(fieldErrors) > 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"statusCode": http.StatusBadRequest,
+			"message":    "Validation failed",
+			"errors":     fieldErrors,
+		})
+		return
+	}
+	invitation, err := store.New(s.cfg.Pool).CreateInvitation(r.Context(), store.CreateInvitationParams{
+		OrganizationID: uuidParam(org.OrganizationID),
+		Email:          strings.ToLower(body.Email),
+		Role:           body.Role,
+		InviterID:      uuidParam(org.UserID),
+	})
+	if err != nil {
+		writeTaxonomy(w, http.StatusInternalServerError, "failed to create invitation")
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"id":             uidString(invitation.ID),
+		"email":          invitation.Email,
+		"role":           invitation.Role,
+		"status":         invitation.Status,
+		"organizationId": uidString(invitation.OrganizationID),
+	})
 }
 
-func (s *Server) OrganizationsControllerInvitation(w http.ResponseWriter, _ *http.Request, _ string) {
-	s.notImplemented(w, "organizations")
+// OrganizationsControllerInvitation serves one invitation, scoped to the
+// caller's Organization (a cross-org id is a 404, never a 403).
+func (s *Server) OrganizationsControllerInvitation(w http.ResponseWriter, r *http.Request, invitationID string) {
+	org, failure := s.resolve(r)
+	if failure != nil {
+		failure.write(w)
+		return
+	}
+	invitation, err := store.New(s.cfg.Pool).GetInvitation(r.Context(), uuidParam(invitationID))
+	if err != nil || uidString(invitation.OrganizationID) != org.OrganizationID {
+		writeTaxonomy(w, http.StatusNotFound, "Invitation not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"id":             uidString(invitation.ID),
+		"email":          invitation.Email,
+		"role":           invitation.Role,
+		"status":         invitation.Status,
+		"organizationId": uidString(invitation.OrganizationID),
+	})
 }
 
 func (s *Server) PatientsControllerList(w http.ResponseWriter, _ *http.Request) {
@@ -204,6 +323,24 @@ func (s *Server) ReportsControllerToday(w http.ResponseWriter, _ *http.Request) 
 	s.notImplemented(w, "reports")
 }
 
-func (s *Server) WorkspaceControllerMe(w http.ResponseWriter, _ *http.Request) {
-	s.notImplemented(w, "workspace")
+// WorkspaceControllerMe answers who the caller is acting as: the verified
+// session user plus the active Organization and the caller's role in it.
+func (s *Server) WorkspaceControllerMe(w http.ResponseWriter, r *http.Request) {
+	org, failure := s.resolve(r)
+	if failure != nil {
+		failure.write(w)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"user": map[string]string{
+			"id":    org.UserID,
+			"email": org.Email,
+			"name":  org.Name,
+		},
+		"organization": map[string]string{
+			"id":   org.OrganizationID,
+			"name": org.OrganizationName,
+			"role": org.Role,
+		},
+	})
 }

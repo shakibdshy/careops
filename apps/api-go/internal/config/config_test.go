@@ -1,6 +1,7 @@
 package config
 
 import (
+	"reflect"
 	"testing"
 )
 
@@ -30,6 +31,7 @@ func TestLoad(t *testing.T) {
 				CommitOpenAPIDir:      "../../packages/contract/openapi",
 				DatabaseURL:           testDB,
 				MigrationsDatabaseURL: testOwnerDB,
+				TrustedOrigins:        []string{"http://localhost:3000"},
 			},
 		},
 		{
@@ -49,6 +51,7 @@ func TestLoad(t *testing.T) {
 				CommitOpenAPIDir:      "/app/openapi",
 				DatabaseURL:           testDB,
 				MigrationsDatabaseURL: testOwnerDB,
+				TrustedOrigins:        []string{"http://localhost:3000"},
 			},
 		},
 		{
@@ -100,7 +103,7 @@ func TestLoad(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Load() unexpected err: %v", err)
 			}
-			if got != tt.want {
+			if !reflect.DeepEqual(got, tt.want) {
 				t.Fatalf("Load() = %+v, want %+v", got, tt.want)
 			}
 		})

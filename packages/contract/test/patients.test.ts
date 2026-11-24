@@ -23,8 +23,11 @@ describe('patients (conformance)', () => {
   let member: Session;
   let stranger: Session;
 
+  // The fixtures only need auth + Organization capabilities (Go-T09), so
+  // the probe names that area — a patients-ledger entry must not claim a
+  // pass just because sign-up and invitations work.
   beforeAll(async () => {
-    await ledgerProbe(AREA, async () => {
+    await ledgerProbe('organizations', async () => {
       owner = await Session.signUp('Patients Owner');
       member = await Session.signUp('Patients Member');
       stranger = await Session.signUp('Patients Stranger');
