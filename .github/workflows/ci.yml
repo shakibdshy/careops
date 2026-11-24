@@ -39,6 +39,17 @@ jobs:
       - name: Typecheck
         run: bun run typecheck
 
+      # Warm the mongod binary cache in ONE process before jest's parallel
+      # workers ever need it (Go-T02 root cause): on a cold runner cache, every
+      # memory-server worker raced on the same download lockfile, a stale lock
+      # was left behind, and the next jest invocation failed every e2e suite
+      # with UnableToUnlockLockfileError. A stale lock from any interrupted
+      # run is removed before warming.
+      - name: Warm the mongod binary cache (single process)
+        run: |
+          rm -f ~/.cache/mongodb-binaries/*.lock
+          cd apps/api && bun -e 'const { MongoBinary } = await import("mongodb-memory-server-core"); console.log("mongod warm:", await MongoBinary.getPath());'
+
       - name: Test
         run: bun run test
 
