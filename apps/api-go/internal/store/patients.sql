@@ -43,3 +43,13 @@ VALUES ($1, $2, $3, $4, $5, $6, sqlc.narg('before'), sqlc.narg('after'));
 -- name: CountAuditEntriesForEntity :one
 SELECT count(*) FROM audit_entry
 WHERE organization_id = $1 AND entity = $2 AND entity_id = $3;
+
+-- name: ListAuditEntries :many
+-- Newest-first audit browsing with a (at, id) keyset cursor, org-scoped and
+-- behind RLS like every domain read. The cursor params are nullable: an
+-- absent cursor must not become a zero timestamp that filters everything.
+SELECT * FROM audit_entry
+WHERE organization_id = NULLIF(current_setting('app.organization_id', true), '')::uuid
+  AND ($1::timestamptz IS NULL OR (at, id) < ($1::timestamptz, $2::uuid))
+ORDER BY at DESC, id DESC
+LIMIT $3;

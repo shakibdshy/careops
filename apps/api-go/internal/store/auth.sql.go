@@ -7,7 +7,6 @@ package store
 
 import (
 	"context"
-	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -125,7 +124,7 @@ RETURNING id, user_id, token_hash, active_organization_id, expires_at, created_a
 type CreateSessionParams struct {
 	UserID    pgtype.UUID
 	TokenHash string
-	ExpiresAt time.Time
+	ExpiresAt pgtype.Timestamptz
 }
 
 func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error) {
@@ -209,7 +208,7 @@ type GetInvitationRow struct {
 	Role             string
 	Status           string
 	InviterID        pgtype.UUID
-	CreatedAt        time.Time
+	CreatedAt        pgtype.Timestamptz
 	OrganizationName string
 }
 
@@ -280,8 +279,8 @@ type GetSessionByTokenHashRow struct {
 	UserID               pgtype.UUID
 	TokenHash            string
 	ActiveOrganizationID pgtype.UUID
-	ExpiresAt            time.Time
-	CreatedAt            time.Time
+	ExpiresAt            pgtype.Timestamptz
+	CreatedAt            pgtype.Timestamptz
 	UserEmail            string
 	UserName             string
 }

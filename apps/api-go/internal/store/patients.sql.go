@@ -149,6 +149,54 @@ func (q *Queries) InsertAuditEntry(ctx context.Context, arg InsertAuditEntryPara
 	return err
 }
 
+const listAuditEntries = `-- name: ListAuditEntries :many
+SELECT id, organization_id, actor_id, actor_email, action, entity, entity_id, before, after, at FROM audit_entry
+WHERE organization_id = NULLIF(current_setting('app.organization_id', true), '')::uuid
+  AND ($1::timestamptz IS NULL OR (at, id) < ($1::timestamptz, $2::uuid))
+ORDER BY at DESC, id DESC
+LIMIT $3
+`
+
+type ListAuditEntriesParams struct {
+	Column1 pgtype.Timestamptz
+	Column2 pgtype.UUID
+	Limit   int32
+}
+
+// Newest-first audit browsing with a (at, id) keyset cursor, org-scoped and
+// behind RLS like every domain read. The cursor params are nullable: an
+// absent cursor must not become a zero timestamp that filters everything.
+func (q *Queries) ListAuditEntries(ctx context.Context, arg ListAuditEntriesParams) ([]AuditEntry, error) {
+	rows, err := q.db.Query(ctx, listAuditEntries, arg.Column1, arg.Column2, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AuditEntry
+	for rows.Next() {
+		var i AuditEntry
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrganizationID,
+			&i.ActorID,
+			&i.ActorEmail,
+			&i.Action,
+			&i.Entity,
+			&i.EntityID,
+			&i.Before,
+			&i.After,
+			&i.At,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPatients = `-- name: ListPatients :many
 SELECT id, organization_id, first_name, last_name, date_of_birth, phone, notes, contact_email, created_at, updated_at FROM patient
 WHERE organization_id = NULLIF(current_setting('app.organization_id', true), '')::uuid

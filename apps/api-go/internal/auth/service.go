@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -166,7 +168,7 @@ func (s *Service) SessionFor(ctx context.Context, token string) (User, Session, 
 		ID:                   UIDString(row.ID),
 		UserID:               UIDString(row.UserID),
 		ActiveOrganizationID: UIDString(row.ActiveOrganizationID),
-		ExpiresAt:            row.ExpiresAt,
+		ExpiresAt:            row.ExpiresAt.Time,
 	}, nil
 }
 
@@ -234,7 +236,7 @@ func (s *Service) createSession(ctx context.Context, tx pgx.Tx, userID string) (
 	row, err := store.New(tx).CreateSession(ctx, store.CreateSessionParams{
 		UserID:    UUIDParam(userID),
 		TokenHash: hash,
-		ExpiresAt: expires,
+		ExpiresAt: pgtype.Timestamptz{Time: expires, Valid: true},
 	})
 	if err != nil {
 		return Session{}, "", fmt.Errorf("session: create: %w", err)

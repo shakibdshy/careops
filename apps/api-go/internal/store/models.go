@@ -5,8 +5,6 @@
 package store
 
 import (
-	"time"
-
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -15,7 +13,7 @@ type AppUser struct {
 	Email        string
 	Name         string
 	PasswordHash string
-	CreatedAt    time.Time
+	CreatedAt    pgtype.Timestamptz
 }
 
 type AuditEntry struct {
@@ -28,14 +26,14 @@ type AuditEntry struct {
 	EntityID       pgtype.UUID
 	Before         []byte
 	After          []byte
-	At             time.Time
+	At             pgtype.Timestamptz
 }
 
 type Organization struct {
 	ID          pgtype.UUID
 	Name        string
 	OwnerUserID pgtype.UUID
-	CreatedAt   time.Time
+	CreatedAt   pgtype.Timestamptz
 	Slug        pgtype.Text
 }
 
@@ -46,7 +44,7 @@ type OrganizationInvitation struct {
 	Role           string
 	Status         string
 	InviterID      pgtype.UUID
-	CreatedAt      time.Time
+	CreatedAt      pgtype.Timestamptz
 }
 
 type OrganizationMember struct {
@@ -65,8 +63,8 @@ type Patient struct {
 	Phone          pgtype.Text
 	Notes          pgtype.Text
 	ContactEmail   pgtype.Text
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
 }
 
 type Session struct {
@@ -74,6 +72,6 @@ type Session struct {
 	UserID               pgtype.UUID
 	TokenHash            string
 	ActiveOrganizationID pgtype.UUID
-	ExpiresAt            time.Time
-	CreatedAt            time.Time
+	ExpiresAt            pgtype.Timestamptz
+	CreatedAt            pgtype.Timestamptz
 }

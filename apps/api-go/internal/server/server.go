@@ -174,10 +174,6 @@ func (s *Server) AppointmentsControllerTransition(w http.ResponseWriter, _ *http
 	s.notImplemented(w, "appointments")
 }
 
-func (s *Server) AuditControllerList(w http.ResponseWriter, _ *http.Request) {
-	s.notImplemented(w, "audit")
-}
-
 // OrganizationsControllerCurrent serves the RBAC surface: the active
 // Organization and every member with their role (the org-current schema).
 func (s *Server) OrganizationsControllerCurrent(w http.ResponseWriter, r *http.Request) {
@@ -285,26 +281,6 @@ func (s *Server) OrganizationsControllerInvitation(w http.ResponseWriter, r *htt
 		"status":         invitation.Status,
 		"organizationId": uidString(invitation.OrganizationID),
 	})
-}
-
-func (s *Server) PatientsControllerList(w http.ResponseWriter, _ *http.Request) {
-	s.notImplemented(w, "patients")
-}
-
-func (s *Server) PatientsControllerCreate(w http.ResponseWriter, _ *http.Request) {
-	s.notImplemented(w, "patients")
-}
-
-func (s *Server) PatientsControllerRemove(w http.ResponseWriter, _ *http.Request, _ string) {
-	s.notImplemented(w, "patients")
-}
-
-func (s *Server) PatientsControllerFindOne(w http.ResponseWriter, _ *http.Request, _ string) {
-	s.notImplemented(w, "patients")
-}
-
-func (s *Server) PatientsControllerUpdate(w http.ResponseWriter, _ *http.Request, _ string) {
-	s.notImplemented(w, "patients")
 }
 
 func (s *Server) ReportsControllerDailyVolume(w http.ResponseWriter, _ *http.Request, _ gen.ReportsControllerDailyVolumeParams) {
