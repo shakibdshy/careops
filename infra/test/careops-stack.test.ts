@@ -126,21 +126,21 @@ test('secret resources carry no inline value in the template', () => {
   }
 });
 
-test('desired count is parameterized on both tiers', () => {
+test('desired count is parameterized on every tier', () => {
   synth({ desiredCount: 4 }).hasResourceProperties('AWS::ECS::Service', { DesiredCount: 4 });
   synth({ webDesiredCount: 2 }).hasResourceProperties('AWS::ECS::Service', { DesiredCount: 2 });
-  // Defaults: one replica per tier.
+  // Defaults: one replica per tier (API, web, Go).
   const services = synth().findResources('AWS::ECS::Service') as Record<
     string,
     { Properties: { DesiredCount: number } }
   >;
-  assert.equal(Object.keys(services).length, 2, 'API and web services');
+  assert.equal(Object.keys(services).length, 3, 'API, web and Go services');
   for (const service of Object.values(services)) {
     assert.equal(service.Properties.DesiredCount, 1);
   }
 });
 
-test('auto-scaling bounds are parameterized on both tiers (minCapacity/maxCapacity)', () => {
+test('auto-scaling bounds are parameterized on every tier (minCapacity/maxCapacity)', () => {
   const scalableTargets = (template: Template) =>
     template.findResources('AWS::ApplicationAutoScaling::ScalableTarget') as Record<
       string,
@@ -158,12 +158,9 @@ test('auto-scaling bounds are parameterized on both tiers (minCapacity/maxCapaci
       target.Properties.MinCapacity,
       target.Properties.MaxCapacity,
     ]);
-  const sameBounds = (pairs: Array<[number, number]>, min: number, max: number): boolean =>
-    pairs.length === 2 && pairs.every(([lo, hi]) => lo === min && hi === max);
-
-  // Defaults: both tiers 1..4.
+  // Defaults: every tier 1..4.
   const defaults = bounds(synth());
-  assert.equal(defaults.length, 2, 'one scalable target per tier');
+  assert.equal(defaults.length, 3, 'one scalable target per tier (API, web, Go)');
   assert.equal(
     defaults.every(([d]) => d === 1),
     true,
@@ -179,26 +176,28 @@ test('auto-scaling bounds are parameterized on both tiers (minCapacity/maxCapaci
     assert.equal(target.Properties.ServiceNamespace, 'ecs');
   }
 
-  // API ramp override moves only the API tier.
+  // API ramp override moves the API and Go tiers (shared bounds lever);
+  // web keeps its defaults.
   assert.deepEqual(
     bounds(synth({ minCapacity: 2, maxCapacity: 8 })).sort((a, b) => a[0] - b[0]),
     [
       [1, 4],
       [2, 8],
+      [2, 8],
     ],
   );
   // Web ramp override moves only the web tier.
-  assert.ok(sameBounds(bounds(synth({ webMinCapacity: 3, webMaxCapacity: 6 })), 1, 4) === false);
   const webRamped = bounds(synth({ webMinCapacity: 3, webMaxCapacity: 6 })).sort(
     (a, b) => a[0] - b[0],
   );
   assert.deepEqual(webRamped, [
     [1, 4],
+    [1, 4],
     [3, 6],
   ]);
 });
 
-test('target-tracking policies scale both tiers on CPU and ALB requests per target', () => {
+test('target-tracking policies scale every tier on CPU; request-count tracks listener-attached targets', () => {
   const policies = synth().findResources('AWS::ApplicationAutoScaling::ScalingPolicy') as Record<
     string,
     {
@@ -220,8 +219,10 @@ test('target-tracking policies scale both tiers on CPU and ALB requests per targ
         policy.Properties.TargetTrackingScalingPolicyConfiguration.PredefinedMetricSpecification
           .PredefinedMetricType === type,
     );
-  // One CPU + one request-count policy per tier.
-  assert.equal(byMetric('ECSServiceAverageCPUUtilization').length, 2);
+  // CPU: one per tier (API, web, Go). Request-count: one per listener-
+  // attached target (API + web; the Go target only tracks requests when the
+  // operator names the Go host — its TG has no listener rule otherwise).
+  assert.equal(byMetric('ECSServiceAverageCPUUtilization').length, 3);
   const requestPolicies = byMetric('ALBRequestCountPerTarget');
   assert.equal(requestPolicies.length, 2);
   for (const policy of tracking) {
@@ -236,6 +237,31 @@ test('target-tracking policies scale both tiers on CPU and ALB requests per targ
   );
   for (const label of labels) assert.ok(label, 'request policy must carry the resource label');
   assert.notEqual(labels[0], labels[1], 'API and web policies must watch different targets');
+
+  // Naming the Go host adds the listener rule and its request-count policy.
+  const routed = synth({ goDomainName: 'go.careops.example.com' });
+  const routedPolicies = Object.values(
+    routed.findResources('AWS::ApplicationAutoScaling::ScalingPolicy') as Record<
+      string,
+      {
+        Properties: {
+          PolicyType: string;
+          TargetTrackingScalingPolicyConfiguration: {
+            PredefinedMetricSpecification: { PredefinedMetricType: string };
+          };
+        };
+      }
+    >,
+  ).filter((policy) => policy.Properties.PolicyType === 'TargetTrackingScaling');
+  assert.equal(
+    routedPolicies.filter(
+      (policy) =>
+        policy.Properties.TargetTrackingScalingPolicyConfiguration.PredefinedMetricSpecification
+          .PredefinedMetricType === 'ALBRequestCountPerTarget',
+    ).length,
+    3,
+    'Go request-count policy appears with the named host',
+  );
 });
 
 test('ALB is internet-facing', () => {
@@ -341,9 +367,9 @@ test('CloudFront attaches the ACM certificate and domain when both are configure
   });
 });
 
-test('provisions both ECR repos, ElastiCache Redis and a CloudWatch log group', () => {
+test('provisions every ECR repo, ElastiCache Redis and a CloudWatch log group', () => {
   const template = synth();
-  template.resourceCountIs('AWS::ECR::Repository', 2);
+  template.resourceCountIs('AWS::ECR::Repository', 3);
   template.resourceCountIs('AWS::ElastiCache::CacheCluster', 1);
   template.resourceCountIs('AWS::Logs::LogGroup', 1);
   template.hasResourceProperties('AWS::ElastiCache::CacheCluster', { Engine: 'redis' });
