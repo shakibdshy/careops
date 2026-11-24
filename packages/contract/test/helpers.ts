@@ -23,6 +23,10 @@ export const BASE_URL = process.env.CONTRACT_BASE_URL ?? 'http://localhost:3001'
 export const LEDGER: Record<string, string> = {
   auth: 'Go-T09',
   organizations: 'Go-T09',
+  patients: 'Go-T11',
+  appointments: 'Go-T12',
+  notifications: 'Go-T13',
+  reports: 'Go-T14',
 };
 
 export const skipIfLedgered = (area: string): boolean => TARGET === 'go' && area in LEDGER;
@@ -88,6 +92,29 @@ export class Session {
         cookie: this.cookieHeader(),
       },
       body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    this.absorb(res);
+    return res;
+  }
+
+  async patch(path: string, body: unknown): Promise<Response> {
+    const res = await fetch(`${BASE_URL}${path}`, {
+      method: 'PATCH',
+      headers: {
+        'content-type': 'application/json',
+        origin: ORIGIN,
+        cookie: this.cookieHeader(),
+      },
+      body: JSON.stringify(body),
+    });
+    this.absorb(res);
+    return res;
+  }
+
+  async delete(path: string): Promise<Response> {
+    const res = await fetch(`${BASE_URL}${path}`, {
+      method: 'DELETE',
+      headers: { origin: ORIGIN, cookie: this.cookieHeader() },
     });
     this.absorb(res);
     return res;
