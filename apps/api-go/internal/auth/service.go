@@ -203,6 +203,16 @@ func (s *Service) AcceptInvitation(ctx context.Context, user User, invitationID,
 		}
 		return fmt.Errorf("accept invitation: create member: %w", err)
 	}
+	// BetterAuth's accept also makes the joined Organization the session's
+	// active one — without this the org-context fallback would pick the
+	// caller's FIRST membership by random uuid order, and the tenant would
+	// be nondeterministic (the conformance suite caught exactly that).
+	if err := queries.SetActiveOrganization(ctx, store.SetActiveOrganizationParams{
+		ActiveOrganizationID: invitation.OrganizationID,
+		TokenHash:            tokenHash,
+	}); err != nil {
+		return fmt.Errorf("accept invitation: activate organization: %w", err)
+	}
 	return tx.Commit(ctx)
 }
 
