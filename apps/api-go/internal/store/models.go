@@ -16,6 +16,20 @@ type AppUser struct {
 	CreatedAt    pgtype.Timestamptz
 }
 
+type Appointment struct {
+	ID               pgtype.UUID
+	OrganizationID   pgtype.UUID
+	PatientID        pgtype.UUID
+	ProviderMemberID pgtype.UUID
+	StartsAt         pgtype.Timestamptz
+	DurationMinutes  int32
+	Status           string
+	Notes            pgtype.Text
+	Slot             pgtype.Range[pgtype.Timestamptz]
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+}
+
 type AuditEntry struct {
 	ID             pgtype.UUID
 	OrganizationID pgtype.UUID

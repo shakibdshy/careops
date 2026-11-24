@@ -154,26 +154,6 @@ func (s *Server) ExtraRoutes(mux *http.ServeMux) {
 
 var _ gen.ServerInterface = (*Server)(nil)
 
-func (s *Server) AppointmentsControllerList(w http.ResponseWriter, _ *http.Request) {
-	s.notImplemented(w, "appointments")
-}
-
-func (s *Server) AppointmentsControllerCreate(w http.ResponseWriter, _ *http.Request) {
-	s.notImplemented(w, "appointments")
-}
-
-func (s *Server) AppointmentsControllerFindOne(w http.ResponseWriter, _ *http.Request, _ string) {
-	s.notImplemented(w, "appointments")
-}
-
-func (s *Server) AppointmentsControllerReschedule(w http.ResponseWriter, _ *http.Request, _ string) {
-	s.notImplemented(w, "appointments")
-}
-
-func (s *Server) AppointmentsControllerTransition(w http.ResponseWriter, _ *http.Request, _ string) {
-	s.notImplemented(w, "appointments")
-}
-
 // OrganizationsControllerCurrent serves the RBAC surface: the active
 // Organization and every member with their role (the org-current schema).
 func (s *Server) OrganizationsControllerCurrent(w http.ResponseWriter, r *http.Request) {
