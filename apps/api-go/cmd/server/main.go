@@ -20,6 +20,7 @@ import (
 	"github.com/shakibdshy/careops/api-go/internal/auth"
 	"github.com/shakibdshy/careops/api-go/internal/config"
 	"github.com/shakibdshy/careops/api-go/internal/db"
+	"github.com/shakibdshy/careops/api-go/internal/notifications"
 	"github.com/shakibdshy/careops/api-go/internal/server"
 )
 
@@ -49,6 +50,19 @@ func main() {
 		os.Exit(1)
 	}
 	defer pool.Close()
+
+	// The notification worker runs in-process (ADR-0017): safe on several
+	// replicas (FOR UPDATE SKIP LOCKED claims) and cancelled with the server.
+	workerCtx, cancelWorker := context.WithCancel(context.Background())
+	defer cancelWorker()
+	worker := &notifications.Worker{
+		Pool:      pool,
+		Sender:    &notifications.SMTPSender{URL: cfg.SMTPURL},
+		MailFrom:  cfg.MailFrom,
+		BatchSize: 10,
+		PollEvery: 500 * time.Millisecond,
+	}
+	go worker.Run(workerCtx)
 
 	srv := server.New(server.Config{
 		ServiceName:      cfg.ServiceName,

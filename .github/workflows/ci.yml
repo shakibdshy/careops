@@ -21,6 +21,18 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
+      # The notification sink: deliveries from both backends land here and
+      # the conformance suite polls its HTTP API.
+      mailpit:
+        image: axllent/mailpit:latest
+        ports:
+          - 1025:1025
+          - 8025:8025
+        options: >-
+          --health-cmd "/mailpit readyz"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
       # The Go replica's database (ADR-0014): the seam + store tests run
       # against this instance as the restricted app role, with migrations
       # applied by the owner first (the Go tests bootstrap themselves).

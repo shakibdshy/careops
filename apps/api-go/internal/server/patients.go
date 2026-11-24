@@ -8,6 +8,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/shakibdshy/careops/api-go/internal/auth"
 	"github.com/shakibdshy/careops/api-go/internal/db"
+	"github.com/shakibdshy/careops/api-go/internal/notifications"
 	"github.com/shakibdshy/careops/api-go/internal/store"
 )
 
@@ -158,6 +160,9 @@ func (s *Server) PatientsControllerCreate(w http.ResponseWriter, r *http.Request
 		}
 		created = row
 		after := patientView(row).auditSnapshot()
+		if err := notifications.EnqueuePatientCreated(ctx, tx, org.OrganizationID, auth.UIDString(row.ID)); err != nil {
+			return err
+		}
 		return writeAuditEntry(ctx, queries, org, "create", "patient", auth.UIDString(row.ID), nil, after)
 	})
 	if err != nil {
@@ -422,6 +427,7 @@ func writePatientWriteFailure(w http.ResponseWriter, err error) {
 		writeTaxonomy(w, http.StatusNotFound, "Patient not found")
 		return
 	}
+	slog.Error("patient write failed", "err", err)
 	writeTaxonomy(w, http.StatusInternalServerError, "patient write failed")
 }
 

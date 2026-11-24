@@ -34,6 +34,10 @@ type Config struct {
 	MigrationsDatabaseURL string
 	// TrustedOrigins are the origins state-changing auth routes accept.
 	TrustedOrigins []string
+	// SMTPURL is the delivery endpoint for notifications (Mailpit locally).
+	SMTPURL string
+	// MailFrom is the envelope sender for outgoing notifications.
+	MailFrom string
 }
 
 func Load() (Config, error) {
@@ -62,6 +66,15 @@ func Load() (Config, error) {
 	}
 	if cfg.CommitOpenAPIDir == "" {
 		return cfg, errors.New("CONTRACT_OPENAPI_DIR: no committed contract directory configured")
+	}
+
+	cfg.SMTPURL = "smtp://localhost:1025"
+	if v := os.Getenv("SMTP_URL"); v != "" {
+		cfg.SMTPURL = v
+	}
+	cfg.MailFrom = "CareOps <no-reply@careops.local>"
+	if v := os.Getenv("MAIL_FROM"); v != "" {
+		cfg.MailFrom = v
 	}
 
 	cfg.DatabaseURL = os.Getenv("DATABASE_URL")

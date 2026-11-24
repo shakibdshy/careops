@@ -32,6 +32,8 @@ func TestLoad(t *testing.T) {
 				DatabaseURL:           testDB,
 				MigrationsDatabaseURL: testOwnerDB,
 				TrustedOrigins:        []string{"http://localhost:3000"},
+				SMTPURL:               "smtp://localhost:1025",
+				MailFrom:              "CareOps <no-reply@careops.local>",
 			},
 		},
 		{
@@ -52,6 +54,8 @@ func TestLoad(t *testing.T) {
 				DatabaseURL:           testDB,
 				MigrationsDatabaseURL: testOwnerDB,
 				TrustedOrigins:        []string{"http://localhost:3000"},
+				SMTPURL:               "smtp://localhost:1025",
+				MailFrom:              "CareOps <no-reply@careops.local>",
 			},
 		},
 		{

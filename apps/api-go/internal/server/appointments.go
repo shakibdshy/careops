@@ -19,6 +19,7 @@ import (
 
 	"github.com/shakibdshy/careops/api-go/internal/auth"
 	"github.com/shakibdshy/careops/api-go/internal/db"
+	"github.com/shakibdshy/careops/api-go/internal/notifications"
 	"github.com/shakibdshy/careops/api-go/internal/store"
 )
 
@@ -266,6 +267,9 @@ func (s *Server) AppointmentsControllerCreate(w http.ResponseWriter, r *http.Req
 			return err
 		}
 		created = row
+		if err := notifications.EnqueueBooking(ctx, tx, org.OrganizationID, auth.UIDString(row.ID), body.PatientID, start); err != nil {
+			return err
+		}
 		return writeAuditEntry(ctx, queries, org, "create", "appointment", auth.UIDString(row.ID),
 			nil, appointmentView(row).auditSnapshot())
 	})
@@ -354,6 +358,13 @@ func (s *Server) AppointmentsControllerTransition(w http.ResponseWriter, r *http
 		})
 		if err != nil {
 			return err
+		}
+		// A cancelled or no-show appointment no longer holds its slot — and
+		// its pending Reminder is withdrawn in the same transaction.
+		if target == "CANCELLED" || target == "NO_SHOW" {
+			if err := notifications.WithdrawReminders(ctx, tx, auth.UIDString(current.ID)); err != nil {
+				return err
+			}
 		}
 		return writeAuditEntry(ctx, queries, org, "update", "appointment", auth.UIDString(after.ID),
 			appointmentView(before).auditSnapshot(), appointmentView(after).auditSnapshot())

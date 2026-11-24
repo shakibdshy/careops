@@ -43,6 +43,28 @@ type AuditEntry struct {
 	At             pgtype.Timestamptz
 }
 
+type NotificationJob struct {
+	ID        int64
+	Kind      string
+	Payload   []byte
+	RunAt     pgtype.Timestamptz
+	Attempts  int32
+	State     string
+	LastError pgtype.Text
+	CreatedAt pgtype.Timestamptz
+}
+
+type NotificationReceipt struct {
+	ID                pgtype.UUID
+	OrganizationID    pgtype.UUID
+	Kind              string
+	EntityID          pgtype.UUID
+	Status            string
+	Recipient         pgtype.Text
+	ProviderMessageID pgtype.Text
+	CreatedAt         pgtype.Timestamptz
+}
+
 type Organization struct {
 	ID          pgtype.UUID
 	Name        string

@@ -11,6 +11,7 @@ sql:
       - internal/store/patients.sql
       - internal/store/auth.sql
       - internal/store/appointments.sql
+      - internal/store/notifications.sql
     gen:
       go:
         package: store
