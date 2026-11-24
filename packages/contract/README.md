@@ -49,11 +49,25 @@ with `CONTRACT_TARGET=reference` on every PR.
 
 ### The parity ledger
 
-`LEDGER` in `test/helpers.ts` maps areas to reasons the **Go** service has
-not implemented them yet. Against the `go` target, ledgered areas are
-skipped; against the `reference` target, **any** entry is a hard failure —
-the ledger may only shrink, and it must be empty by Go-T18. Entries are
-added only by Go tickets that scope their work.
+`LEDGER` in `test/helpers.ts` maps areas to the ticket that will implement
+them for the **Go** service. The probe semantics make the ledger honest in
+both directions:
+
+- against the **reference** target, every case runs plainly (the reference
+  implements everything, ledger or not);
+- against the **go** target, a ledgered area's failures are expected — and a
+  ledgered area that **passes** is a hard failure, so the ledger can only
+  shrink: remove the entry when its ticket lands.
+
+Current entries: `auth` (Go-T09), `organizations` (Go-T09). The ledger must
+be empty by Go-T18.
+
+### Pointing the web app at either backend
+
+The web dev proxy targets whichever backend `API_PROXY_TARGET` names
+(`http://localhost:3001` for the NestJS reference by default,
+`http://localhost:3102` for the Go replica); the conformance suite is
+parameterised the same way (`CONTRACT_BASE_URL`).
 
 ### Areas
 

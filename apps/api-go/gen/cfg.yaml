@@ -1,0 +1,8 @@
+# Codegen from the committed contract artifact (packages/contract/openapi/api.json).
+# Output is committed and drift-checked in CI — regenerate with
+# `go tool oapi-codegen -config gen/cfg.yaml ../../packages/contract/openapi/api.json`.
+package: gen
+output: gen/gen.go
+generate:
+  models: true
+  std-http-server: true

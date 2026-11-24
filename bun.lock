@@ -65,6 +65,10 @@
         "typescript": "^6.0.2",
       },
     },
+    "apps/api-go": {
+      "name": "@careops/api-go",
+      "version": "0.0.1",
+    },
     "apps/web": {
       "name": "@careops/web",
       "dependencies": {
@@ -297,6 +301,8 @@
     "@cacheable/utils": ["@cacheable/utils@2.5.0", "", { "dependencies": { "hashery": "^1.5.1", "keyv": "^5.6.0" } }, "sha512-buipgOVDkkPXNR5+xBpDw7Zk2n1EvU7qBJCNUcL7rhQ//kfpOXPAvQ511Os0vpLYJ1pZnvudNytkQt2hst3wqA=="],
 
     "@careops/api": ["@careops/api@workspace:apps/api"],
+
+    "@careops/api-go": ["@careops/api-go@workspace:apps/api-go"],
 
     "@careops/contract": ["@careops/contract@workspace:packages/contract"],
 

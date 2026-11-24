@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CareOps Go API — contract documents</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        max-width: 40rem;
+        margin: 4rem auto;
+        padding: 0 1rem;
+        line-height: 1.6;
+        color: #1c1c1c;
+      }
+      a {
+        color: #0b7285;
+      }
+      code {
+        background: #f1f3f5;
+        padding: 0.1rem 0.35rem;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>CareOps Go API</h1>
+    <p>
+      The Go replica serves the <strong>committed contract artifacts</strong>
+      verbatim (ADR-0015) — the same documents the NestJS reference publishes:
+    </p>
+    <ul>
+      <li><a href="/api/docs-json">Domain API document</a> (<code>GET /api/docs-json</code>)</li>
+      <li>
+        <a href="/api/docs-json/auth">Auth document (BetterAuth surface)</a>
+        (<code>GET /api/docs-json/auth</code>)
+      </li>
+    </ul>
+    <p>Interactive reference for the reference API: <code>GET /api/docs</code> on the NestJS origin.</p>
+  </body>
+</html>

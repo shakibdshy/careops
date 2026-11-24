@@ -1,0 +1,22 @@
+# golangci-lint v2 config — a deliberate, small set: everything std, plus the
+# correctness linters that match the repo's TS culture (error shadowing, unused
+# writes, lost cancellations). Style policing stays with gofmt.
+version: '2'
+linters:
+  default: standard
+  enable:
+    - bodyclose
+    - contextcheck
+    - errname
+    - errorlint
+    - nilerr
+    - noctx
+    - prealloc
+    - rowserrcheck
+    - sqlclosecheck
+    - unconvert
+    - unparam
+    - wastedassign
+formatters:
+  enable:
+    - gofumpt

@@ -14,21 +14,36 @@ export const BASE_URL = process.env.CONTRACT_BASE_URL ?? 'http://localhost:3001'
 
 /**
  * Parity ledger (spec #59): behaviours the Go service has not implemented
- * yet, as area -> reason. Against the `go` target, ledgered areas are
- * skipped; against the `reference` target ANY entry is a hard failure — the
- * ledger may only shrink, and it must be empty by Go-T18.
+ * yet, as area -> the ticket that will implement it. Against the `go`
+ * target, ledgered areas run and their failures are expected — while any
+ * ledgered area that PASSES is a hard failure, so the ledger can only
+ * shrink honestly (remove the entry when its ticket lands). The reference
+ * implements everything, so it runs every case plainly.
  */
-export const LEDGER: Record<string, string> = {};
+export const LEDGER: Record<string, string> = {
+  auth: 'Go-T09',
+  organizations: 'Go-T09',
+};
 
 export const skipIfLedgered = (area: string): boolean => TARGET === 'go' && area in LEDGER;
 
-export function assertLedgerAllows(area: string): void {
-  if (TARGET === 'reference' && area in LEDGER) {
-    throw new Error(
-      `parity ledger lists "${area}" (${LEDGER[area]}) but the target is the reference ` +
-        `implementation — the ledger may only list gaps of the Go service`,
-    );
+/**
+ * Run a case body under the ledger semantics. Unledgered areas (or the
+ * reference target) just run; a ledgered area against `go` swallows its
+ * failure — that is what the entry asserts — and fails loudly if it passes.
+ */
+export async function ledgerProbe(area: string, fn: () => Promise<void>): Promise<void> {
+  if (TARGET !== 'go' || !(area in LEDGER)) {
+    return fn();
   }
+  try {
+    await fn();
+  } catch {
+    return; // expected: the area is still ledgered for Go
+  }
+  throw new Error(
+    `parity ledger stale: "${area}" passes against go — remove its LEDGER entry (${LEDGER[area]})`,
+  );
 }
 
 const PASSWORD = 'correct-horse-battery-staple';
