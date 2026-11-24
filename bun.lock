@@ -129,6 +129,10 @@
         "typescript": "^6.0.2",
       },
     },
+    "packages/contract": {
+      "name": "@careops/contract",
+      "version": "0.0.1",
+    },
     "packages/shared": {
       "name": "@careops/shared",
       "version": "0.0.1",
@@ -286,6 +290,8 @@
     "@cacheable/utils": ["@cacheable/utils@2.5.0", "", { "dependencies": { "hashery": "^1.5.1", "keyv": "^5.6.0" } }, "sha512-buipgOVDkkPXNR5+xBpDw7Zk2n1EvU7qBJCNUcL7rhQ//kfpOXPAvQ511Os0vpLYJ1pZnvudNytkQt2hst3wqA=="],
 
     "@careops/api": ["@careops/api@workspace:apps/api"],
+
+    "@careops/contract": ["@careops/contract@workspace:packages/contract"],
 
     "@careops/infra": ["@careops/infra@workspace:infra"],
 

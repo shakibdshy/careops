@@ -80,6 +80,8 @@ apps/
 packages/
   shared/ Zod schemas — single source of truth for API validation,
           Swagger, and web typing (both directions)
+  contract/ Committed OpenAPI documents — the API contract as artifacts,
+          regenerated from the API, drift-checked in CI (Go-T01)
 infra/    AWS CDK stack — Fargate (API + web SSR) behind one ALB, CloudFront,
           ElastiCache, Secrets Manager; also deploys to the Floci AWS emulator
 tools/    Receipt runners — index explain, N+1, cache, k6, lighthouse,

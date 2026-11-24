@@ -1,0 +1,11 @@
+{
+  "name": "@careops/contract",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "The committed API contract: OpenAPI documents regenerated from the reference API (Go-T01). Home of the black-box conformance suite (Go-T04+).",
+  "scripts": {
+    "generate": "cd ../../apps/api && bun run dump:openapi",
+    "check": "bun run generate && git diff --exit-code -- . && test -z \"$(git status --porcelain .)\""
+  }
+}

@@ -58,6 +58,13 @@ jobs:
       - name: Build
         run: bun run build
 
+      # Contract drift (Go-T01): the committed OpenAPI artifacts must match
+      # what the API serves. Regenerates from a live boot (ephemeral Mongo;
+      # Redis comes from the CI service container) and fails the PR on any
+      # uncommitted difference.
+      - name: API contract drift check
+        run: bun run contract:check
+
       # PR safety (W3-T5): the stack must synthesize cleanly with no AWS
       # credentials — env-agnostic synth, template asserted on disk. Deploys
       # only ever happen on main (deploy.yml), never on a PR.
