@@ -3,9 +3,18 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
-  "description": "The committed API contract: OpenAPI documents regenerated from the reference API (Go-T01). Home of the black-box conformance suite (Go-T04+).",
+  "description": "The committed API contract: OpenAPI documents regenerated from the reference API (Go-T01) and the black-box conformance suite every backend must pass (Go-T04+).",
   "scripts": {
     "generate": "cd ../../apps/api && bun run dump:openapi",
-    "check": "bun run generate && git diff --exit-code -- . && test -z \"$(git status --porcelain .)\""
+    "check": "bun run generate && git diff --exit-code -- . && test -z \"$(git status --porcelain .)\"",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@careops/shared": "workspace:*",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.0"
   }
 }

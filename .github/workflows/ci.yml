@@ -76,6 +76,24 @@ jobs:
       - name: API contract drift check
         run: bun run contract:check
 
+      # Conformance target (Go-T04): boot the reference API over real HTTP on
+      # :3101 against an ephemeral replica set kept alive for the job, then
+      # run the black-box suite against it. HTTP-only, target pinned to
+      # `reference` so any parity-ledger entry is a hard failure.
+      - name: Boot the reference API (conformance target)
+        run: |
+          cd apps/api
+          nohup bun -e 'const { MongoMemoryReplSet } = await import("mongodb-memory-server"); const rs = await MongoMemoryReplSet.create({ replSet: { count: 1, name: "rs0" } }); await Bun.write("/tmp/conformance-mongo-uri", rs.getUri("careops-conformance")); console.log("conformance mongo up"); setInterval(() => {}, 1073741824);' > /tmp/conformance-mongo.log 2>&1 &
+          for i in $(seq 1 30); do [ -s /tmp/conformance-mongo-uri ] && break; sleep 1; done
+          test -s /tmp/conformance-mongo-uri || { cat /tmp/conformance-mongo.log; exit 1; }
+          MONGO_URI=$(cat /tmp/conformance-mongo-uri)
+          PORT=3101 MONGODB_URI="$MONGO_URI" REDIS_URL="$REDIS_URL" BETTER_AUTH_SECRET=test-secret-only-for-the-e2e-harness-1234567890 NOTIFICATIONS_QUEUE_NAME=notifications-conformance nohup node dist/main.js > /tmp/reference-api.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf http://localhost:3101/api/health >/dev/null 2>&1 && break; sleep 1; done
+          curl -sf http://localhost:3101/api/health
+
+      - name: Conformance suite (reference target)
+        run: cd packages/contract && CONTRACT_TARGET=reference CONTRACT_BASE_URL=http://localhost:3101 bun test
+
       # PR safety (W3-T5): the stack must synthesize cleanly with no AWS
       # credentials — env-agnostic synth, template asserted on disk. Deploys
       # only ever happen on main (deploy.yml), never on a PR.
