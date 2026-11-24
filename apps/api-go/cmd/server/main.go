@@ -1,6 +1,8 @@
-// The Go replica's entrypoint (Go-T05): config from the environment (fail
-// fast), the generated contract surface wired onto a std net/http mux, JSON
-// request logs, and graceful shutdown on SIGINT/SIGTERM.
+// The Go replica's entrypoint (Go-T05, extended by Go-T06): config from the
+// environment (fail fast), forward-only migrations applied as the owner
+// before anything listens, the restricted app-role pool, the generated
+// contract surface on a std net/http mux, JSON request logs, and graceful
+// shutdown on SIGINT/SIGTERM.
 package main
 
 import (
@@ -16,6 +18,7 @@ import (
 
 	"github.com/shakibdshy/careops/api-go/gen"
 	"github.com/shakibdshy/careops/api-go/internal/config"
+	"github.com/shakibdshy/careops/api-go/internal/db"
 	"github.com/shakibdshy/careops/api-go/internal/server"
 )
 
@@ -28,10 +31,29 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Migrations run before the service listens (ADR-0014): schema and code
+	// always ship together, and the app role never sees an un-migrated db.
+	// The owner connection creates roles and policies; the app role must not.
+	migrateCtx, cancelMigrate := context.WithTimeout(context.Background(), 60*time.Second)
+	if err := db.Migrate(migrateCtx, cfg.MigrationsDatabaseURL); err != nil {
+		cancelMigrate()
+		slog.Error("migrations failed", "err", err)
+		os.Exit(1)
+	}
+	cancelMigrate()
+
+	pool, err := db.Connect(context.Background(), cfg.DatabaseURL)
+	if err != nil {
+		slog.Error("database connect failed", "err", err)
+		os.Exit(1)
+	}
+	defer pool.Close()
+
 	srv := server.New(server.Config{
 		ServiceName:      cfg.ServiceName,
 		Implementation:   cfg.Implementation,
 		CommitOpenAPIDir: cfg.CommitOpenAPIDir,
+		Pool:             pool,
 	})
 
 	mux := http.NewServeMux()

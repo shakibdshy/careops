@@ -1,17 +1,21 @@
-// Package server wires the generated contract surface (Go-T05 skeleton).
-// Every domain route answers the shared error taxonomy with 501 until its
-// ticket implements it — the parity ledger in packages/contract then sees a
-// real HTTP failure instead of a missing route. Health and the committed
-// OpenAPI documents are served for real from day one.
+// Package server wires the generated contract surface (Go-T05 skeleton,
+// Postgres added in Go-T06). Every domain route answers the shared error
+// taxonomy with 501 until its ticket implements it — the parity ledger in
+// packages/contract then sees a real HTTP failure instead of a missing
+// route. Health and the committed OpenAPI documents are served for real
+// from day one.
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/shakibdshy/careops/api-go/gen"
 
 	_ "embed"
@@ -25,6 +29,9 @@ type Config struct {
 	ServiceName      string
 	Implementation   string
 	CommitOpenAPIDir string
+	// Pool is the restricted app-role pool; health reports its reachability
+	// under the `postgres` dependency key (the stated parity exception).
+	Pool *pgxpool.Pool
 }
 
 // Server implements gen.ServerInterface. Domain methods are explicit 501
@@ -55,13 +62,27 @@ func (s *Server) notImplemented(w http.ResponseWriter, area string) {
 	})
 }
 
-// Health reports status and the shared service identity plus the
-// `implementation` field (spec #59: dependency keys are per-backend).
-func (s *Server) HealthControllerCheck(w http.ResponseWriter, _ *http.Request) {
+// Health reports status, the shared service identity, the implementation,
+// and Postgres reachability under the `postgres` dependency key (the stated
+// parity exception — the reference reports mongo/redis, this backend
+// reports postgres). Unauthenticated by design, like the reference.
+func (s *Server) HealthControllerCheck(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 500*time.Millisecond)
+	defer cancel()
+
+	postgres := "up"
+	status := "ok"
+	if err := s.cfg.Pool.Ping(ctx); err != nil {
+		slog.Warn("postgres unreachable", "err", err)
+		postgres = "down"
+		status = "degraded"
+	}
+
 	writeJSON(w, http.StatusOK, map[string]string{
-		"status":         "ok",
+		"status":         status,
 		"service":        s.cfg.ServiceName,
 		"implementation": s.cfg.Implementation,
+		"postgres":       postgres,
 	})
 }
 

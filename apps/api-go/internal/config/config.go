@@ -10,8 +10,10 @@ import (
 	"strconv"
 )
 
-// Config carries everything the server needs to boot. Every field is required
-// unless noted; a missing or malformed variable aborts startup.
+// Config carries everything the server needs to boot. DATABASE_URL and
+// MIGRATIONS_DATABASE_URL are required: the app connects as the restricted
+// careops_app role, while migrations run as the owner (they create roles and
+// policies, which the app role must not do — ADR-0018).
 type Config struct {
 	// Port is the HTTP listen port (PORT).
 	Port int
@@ -24,6 +26,11 @@ type Config struct {
 	// CommitOpenAPIDir points at the committed contract artifacts
 	// (CONTRACT_OPENAPI_DIR; overridden only in tests).
 	CommitOpenAPIDir string
+	// DatabaseURL is the app-role connection string (DATABASE_URL).
+	DatabaseURL string
+	// MigrationsDatabaseURL is the owner connection string used by the
+	// migration runner (MIGRATIONS_DATABASE_URL).
+	MigrationsDatabaseURL string
 }
 
 func Load() (Config, error) {
@@ -52,6 +59,15 @@ func Load() (Config, error) {
 	}
 	if cfg.CommitOpenAPIDir == "" {
 		return cfg, errors.New("CONTRACT_OPENAPI_DIR: no committed contract directory configured")
+	}
+
+	cfg.DatabaseURL = os.Getenv("DATABASE_URL")
+	if cfg.DatabaseURL == "" {
+		return cfg, errors.New("DATABASE_URL: required (the app-role PostgreSQL connection)")
+	}
+	cfg.MigrationsDatabaseURL = os.Getenv("MIGRATIONS_DATABASE_URL")
+	if cfg.MigrationsDatabaseURL == "" {
+		return cfg, errors.New("MIGRATIONS_DATABASE_URL: required (the owner connection for the migration runner)")
 	}
 	return cfg, nil
 }

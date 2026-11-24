@@ -21,8 +21,26 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
+      # The Go replica's database (ADR-0014): the seam + store tests run
+      # against this instance as the restricted app role, with migrations
+      # applied by the owner first (the Go tests bootstrap themselves).
+      postgres:
+        image: postgres:17-alpine
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: careops
+          POSTGRES_PASSWORD: careops-local-only
+          POSTGRES_DB: careops_go
+        options: >-
+          --health-cmd "pg_isready -U careops -d careops_go"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     env:
       REDIS_URL: redis://localhost:6379
+      DATABASE_URL: postgres://careops_app:careops-app-local-only@localhost:5432/careops_go?sslmode=disable
+      MIGRATIONS_DATABASE_URL: postgres://careops:careops-local-only@localhost:5432/careops_go?sslmode=disable
     steps:
       - uses: actions/checkout@v5
 
@@ -110,6 +128,14 @@ jobs:
           go tool oapi-codegen -config gen/cfg.yaml ../../packages/contract/openapi/api.json
           cd ../.. && git diff --exit-code -- apps/api-go/gen
 
+      # Go store codegen drift (Go-T06): the sqlc output must match the SQL
+      # queries and the migrations schema exactly.
+      - name: Go store codegen drift check
+        run: |
+          cd apps/api-go
+          go tool sqlc generate
+          cd ../.. && git diff --exit-code -- apps/api-go/internal/store
+
       # Conformance target `go` (Go-T05): the skeleton serves health and the
       # committed documents; ledgered areas fail and are swallowed by the
       # ledger probe — and any ledgered area that PASSES fails the run, so
@@ -118,7 +144,9 @@ jobs:
         run: |
           cd apps/api-go
           CONTRACT_OPENAPI_DIR=../../packages/contract/openapi go build -o /tmp/api-go-server ./cmd/server
-          PORT=3102 CONTRACT_OPENAPI_DIR=../../packages/contract/openapi nohup /tmp/api-go-server > /tmp/api-go-conformance.log 2>&1 &
+          PORT=3102 CONTRACT_OPENAPI_DIR=../../packages/contract/openapi \
+            DATABASE_URL="$DATABASE_URL" MIGRATIONS_DATABASE_URL="$MIGRATIONS_DATABASE_URL" \
+            nohup /tmp/api-go-server > /tmp/api-go-conformance.log 2>&1 &
           for i in $(seq 1 30); do curl -sf http://localhost:3102/api/health >/dev/null 2>&1 && break; sleep 1; done
           curl -sf http://localhost:3102/api/health
           cd ../../packages/contract

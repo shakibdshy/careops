@@ -1,0 +1,19 @@
+# sqlc: compile-time-typed Go from hand-written SQL (ADR-0014: no ORM).
+# Schema comes straight from the forward-only migrations, so the generated
+# code can never drift from the real schema. Regenerate with
+# `go tool sqlc generate` (tool version pinned in go.mod) — output is
+# committed and CI drift-checks it like the OpenAPI bindings.
+version: '2'
+sql:
+  - engine: postgresql
+    schema: internal/db/migrations
+    queries: internal/store/patients.sql
+    gen:
+      go:
+        package: store
+        out: internal/store
+        sql_package: pgx/v5
+        emit_json_tags: false
+        overrides:
+          - db_type: 'timestamptz'
+            go_type: 'time.Time'
