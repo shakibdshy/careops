@@ -48,7 +48,7 @@ jobs:
       - name: Warm the mongod binary cache (single process)
         run: |
           rm -f ~/.cache/mongodb-binaries/*.lock
-          cd apps/api && bun -e 'const { MongoBinary } = await import("mongodb-memory-server-core"); console.log("mongod warm:", await MongoBinary.getPath());'
+          cd apps/api && bun -e 'const { MongoMemoryReplSet } = await import("mongodb-memory-server"); const rs = await MongoMemoryReplSet.create({ replSet: { count: 1, name: "rs0" } }); console.log("mongod warm:", rs.getUri()); await rs.stop();'
 
       - name: Test
         run: bun run test
