@@ -80,10 +80,13 @@ apps/
 packages/
   shared/ Zod schemas — single source of truth for API validation,
           Swagger, and web typing (both directions)
-  contract/ Committed OpenAPI documents — the API contract as artifacts,
-          regenerated from the API, drift-checked in CI (Go-T01)
-infra/    AWS CDK stack — Fargate (API + web SSR) behind one ALB, CloudFront,
-          ElastiCache, Secrets Manager; also deploys to the Floci AWS emulator
+  contract/ Committed OpenAPI documents + the black-box conformance suite
+          that every backend must pass (97 cases, both targets)
+  api-go/ Go replica — the same REST contract from PostgreSQL (pgx + sqlc,
+          RLS-guarded tenancy, Postgres-backed queue; ADR-0013–0020)
+infra/    AWS CDK stack — Fargate (API + web SSR + Go replica) behind one
+          ALB, CloudFront, ElastiCache, RDS PostgreSQL, Secrets Manager; also
+          deploys to the Floci AWS emulator
 tools/    Receipt runners — index explain, N+1, cache, k6, lighthouse,
           origin proof; measured outputs in tools/receipts/
 docs/     20 ADRs, performance + scaling narratives
@@ -109,6 +112,18 @@ docs/     20 ADRs, performance + scaling narratives
   `SKIPPED` receipt, never a silent drop. Reminders are delayed jobs at
   start − 24h that cancel themselves when the Appointment is cancelled or moved
   past the reminder time.
+
+## One web app, two backends
+
+The repo also contains a **second implementation of the same REST API**:
+`apps/api-go` serves the identical contract from PostgreSQL, and the same
+web app runs unchanged against either backend. It exists because the
+contract is worth proving twice — one black-box conformance suite (97 cases)
+runs against both backends on every PR, the parity ledger shrank to empty,
+and the same k6 scenario measures both. See ADR-0013–0015 for why a replica,
+why its own PostgreSQL, and how the committed OpenAPI contract holds across
+languages. Demo credentials work on both: `owner@demo.careops` /
+`careops-demo-1` (the badge shows which backend is serving).
 
 ## Deployment — all-AWS, in-repo CDK
 

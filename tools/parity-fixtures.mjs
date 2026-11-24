@@ -17,7 +17,7 @@ if (!BASE_URL) {
 
 const PATIENTS = Number(process.env.FIXTURE_PATIENTS || 40);
 const PER_PATIENT = Number(process.env.FIXTURE_APPOINTMENTS || 3);
-const stamp = `${process.pid}${Date.now().toString(36)}`;
+const stamp = 'cmp';
 let cookie = '';
 
 async function api(path, init = {}) {
@@ -59,11 +59,22 @@ if (!ownerMember) {
 console.log(`signed in as ${me.user.email} in ${me.organization.name}`);
 
 let appointmentsCreated = 0;
+// Pre-existing fixture patients (from an earlier run on this org) keep
+// their appointments; only NEW patients get the appointment spread. The
+// fixed 'cmp' stamp makes names identical across backends, which is what
+// the parity check compares.
+const existingRes = await api('/api/patients?limit=100');
+const existing = await existingRes.json();
+const existingNames = new Set((existing.items ?? []).map((p) => `${p.firstName} ${p.lastName}`));
 for (let i = 0; i < PATIENTS; i++) {
+  const patientName = `Fix-${stamp}-${i} Comparison`;
+  if (existingNames.has(patientName)) {
+    continue;
+  }
   const patientRes = await api('/api/patients', {
     method: 'POST',
     body: JSON.stringify({
-      firstName: `Fix${stamp}${i}`,
+      firstName: `Fix-${stamp}-${i}`,
       lastName: 'Comparison',
       dateOfBirth: '1985-06-15',
       phone: '555-0100',
