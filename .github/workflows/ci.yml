@@ -125,6 +125,7 @@ jobs:
           for i in $(seq 1 30); do [ -s /tmp/conformance-mongo-uri ] && break; sleep 1; done
           test -s /tmp/conformance-mongo-uri || { cat /tmp/conformance-mongo.log; exit 1; }
           MONGO_URI=$(cat /tmp/conformance-mongo-uri)
+          echo "CONFORMANCE_MONGO_URI=$MONGO_URI" >> "$GITHUB_ENV"
           PORT=3101 MONGODB_URI="$MONGO_URI" REDIS_URL="$REDIS_URL" BETTER_AUTH_SECRET=test-secret-only-for-the-e2e-harness-1234567890 NOTIFICATIONS_QUEUE_NAME=notifications-conformance nohup node dist/main.js > /tmp/reference-api.log 2>&1 &
           for i in $(seq 1 60); do curl -sf http://localhost:3101/api/health >/dev/null 2>&1 && break; sleep 1; done
           curl -sf http://localhost:3101/api/health
@@ -163,6 +164,32 @@ jobs:
           curl -sf http://localhost:3102/api/health
           cd ../../packages/contract
           CONTRACT_TARGET=go CONTRACT_BASE_URL=http://localhost:3102 bun test
+
+      # Browser tests (Go-T18): the Playwright suite runs against BOTH
+      # backends. The reference-backed run boots the built API (fast boot —
+      # watch mode would blow the webServer timeout) against the conformance
+      # Mongo replica set; the Go-backed run proxies the web dev server at
+      # the Go service from the step above and expects its badge.
+      - name: Install Playwright browsers
+        run: cd apps/web && bunx playwright install --with-deps chromium
+      - name: Browser tests (reference-backed)
+        env:
+          API_START_COMMAND: node dist/main.js
+          MONGODB_URI: ${{ env.CONFORMANCE_MONGO_URI }}
+          BETTER_AUTH_SECRET: test-secret-only-for-the-e2e-harness-1234567890
+          NOTIFICATIONS_QUEUE_NAME: notifications-e2e
+          BETTER_AUTH_URL: http://localhost:3001
+        run: cd apps/web && bunx playwright test
+      - name: Browser tests (Go-backed origin)
+        env:
+          API_START_COMMAND: node dist/main.js
+          MONGODB_URI: ${{ env.CONFORMANCE_MONGO_URI }}
+          BETTER_AUTH_SECRET: test-secret-only-for-the-e2e-harness-1234567890
+          NOTIFICATIONS_QUEUE_NAME: notifications-e2e
+          BETTER_AUTH_URL: http://localhost:3001
+          API_PROXY_TARGET: http://localhost:3102
+          EXPECT_IMPLEMENTATION: go
+        run: cd apps/web && bunx playwright test
 
       # PR safety (W3-T5): the stack must synthesize cleanly with no AWS
       # credentials — env-agnostic synth, template asserted on disk. Deploys
