@@ -79,16 +79,19 @@ jobs:
           aws ecr get-login-password --region "$AWS_REGION" \
             | docker login --username AWS --password-stdin "$ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com"
 
-      - name: Build and push both images
+      - name: Build and push all three images
         if: ${{ inputs.skip_build != true }}
         run: |
-          docker build -f apps/api/Dockerfile -t "careops-api:$IMAGE_TAG" .
-          docker build -f apps/web/Dockerfile -t "careops-web:$IMAGE_TAG" .
+          docker build -f apps/api/Dockerfile    -t "careops-api:$IMAGE_TAG" .
+          docker build -f apps/web/Dockerfile    -t "careops-web:$IMAGE_TAG" .
+          docker build -f apps/api-go/Dockerfile -t "careops-api-go:$IMAGE_TAG" .
           REGISTRY="$ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com"
-          docker tag "careops-api:$IMAGE_TAG"  "$REGISTRY/careops-api:$IMAGE_TAG"
-          docker tag "careops-web:$IMAGE_TAG"  "$REGISTRY/careops-web:$IMAGE_TAG"
+          docker tag "careops-api:$IMAGE_TAG"    "$REGISTRY/careops-api:$IMAGE_TAG"
+          docker tag "careops-web:$IMAGE_TAG"    "$REGISTRY/careops-web:$IMAGE_TAG"
+          docker tag "careops-api-go:$IMAGE_TAG" "$REGISTRY/careops-api-go:$IMAGE_TAG"
           docker push "$REGISTRY/careops-api:$IMAGE_TAG"
           docker push "$REGISTRY/careops-web:$IMAGE_TAG"
+          docker push "$REGISTRY/careops-api-go:$IMAGE_TAG"
 
       - name: Deploy the stack
         working-directory: infra
@@ -97,11 +100,18 @@ jobs:
           # real named deploy. They also pin the API's same-origin auth config.
           ACM_CERT_ARN: ${{ vars.ACM_CERT_ARN }}
           DOMAIN_NAME: ${{ vars.DOMAIN_NAME }}
+          GO_DOMAIN_NAME: ${{ vars.GO_DOMAIN_NAME }}
         run: |
-          ARGS=(-c target=aws -c imageTag="$IMAGE_TAG" -c webImageTag="$IMAGE_TAG")
+          ARGS=(-c target=aws -c imageTag="$IMAGE_TAG" -c webImageTag="$IMAGE_TAG" -c goImageTag="$IMAGE_TAG")
           if [ -n "$ACM_CERT_ARN" ] && [ -n "$DOMAIN_NAME" ]; then
             ARGS+=(-c certificateArn="$ACM_CERT_ARN" -c domainName="$DOMAIN_NAME")
           fi
+          if [ -n "$GO_DOMAIN_NAME" ]; then
+            ARGS+=(-c goDomainName="$GO_DOMAIN_NAME")
+          fi
+          # Migrations ship inside the Go image: the container applies its
+          # embedded, idempotent migrations before it starts serving, so the
+          # new schema is in place before the new version passes health.
           bunx cdk deploy CareOpsStack "${ARGS[@]}" --require-approval never
 
       - name: Resolve the deployed origin
@@ -112,8 +122,15 @@ jobs:
           echo "BASE_URL=$APP_URL" >> "$GITHUB_ENV"
 
       # Post-deploy smoke (W3-T5): API health green through the edge, SSR HTML
-      # served + never cacheable, hashed assets immutable, /api/* stays the API.
-      - name: Post-deploy smoke
+      # served + never cacheable, hashed assets immutable, /api/* stays the
+      # API. When the Go host is named, the same contract runs against it.
+      - name: Post-deploy smoke (reference origin)
+        run: bun tools/smoke.mjs
+
+      - name: Post-deploy smoke (Go origin)
+        if: ${{ vars.GO_DOMAIN_NAME != '' }}
+        env:
+          BASE_URL: https://${{ vars.GO_DOMAIN_NAME }}
         run: bun tools/smoke.mjs
 
       - name: Deploy summary

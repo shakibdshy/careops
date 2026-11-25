@@ -41,6 +41,7 @@ export class HealthService {
     return {
       status: mongoUp && redisUp ? 'ok' : 'degraded',
       service: 'careops-api',
+      implementation: 'nestjs',
       mongo: mongoUp ? 'up' : 'down',
       redis: redisUp ? 'up' : 'down',
     };

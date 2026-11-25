@@ -35,21 +35,31 @@ const get = async (pathOrUrl, init) => {
 
 console.log(`smoke: ${BASE_URL}`);
 
-// 1. API health through the edge: the full data plane is green.
+// 1. API health through the edge: the full data plane is green. Both
+// backends answer the same shape; the data-plane key names that origin's
+// database (mongo on the reference, postgres on the Go replica) and
+// `implementation` names which one is serving — recorded, not asserted, so
+// the same smoke gates either host.
 const health = await get('/api/health');
-let healthBody = '';
+let healthBody = {};
 try {
   healthBody = await health?.json();
 } catch {
   healthBody = {};
 }
+const dataPlaneUp = healthBody?.mongo === 'up' || healthBody?.postgres === 'up';
 check(
-  'GET /api/health → 200 ok, mongo up, redis up',
+  `GET /api/health → 200 ok, data plane up, redis up (served by ${healthBody?.implementation ?? 'unknown'})`,
   health?.status === 200 &&
     healthBody?.status === 'ok' &&
-    healthBody?.mongo === 'up' &&
+    dataPlaneUp &&
     healthBody?.redis === 'up',
   JSON.stringify(healthBody),
+);
+check(
+  'GET /api/health names its implementation (nestjs | go)',
+  healthBody?.implementation === 'nestjs' || healthBody?.implementation === 'go',
+  String(healthBody?.implementation),
 );
 
 // 2. The web SSR tier serves HTML through the same origin, never cacheable.

@@ -71,10 +71,14 @@ test('book → duplicate slot → 409 at the field → adjust → booked, new ro
 
   // Same Provider + overlapping slot: the API rejects with a field-level 409.
   await book(page, ids, '2030-01-01T10:00');
+  // Wording differs per backend (the stated parity exception); the Conflict
+  // semantics do not: a field-level 409 on the start, naming the overlap.
   await expect(page.getByTestId('field-error-start')).toContainText(
-    'Conflicts with an appointment',
+    /Conflicts with an appointment|overlapping appointment/i,
   );
-  await expect(page.getByTestId('zod-form-error')).toContainText('Provider already booked');
+  await expect(page.getByTestId('zod-form-error')).toContainText(
+    /Provider already booked|overlapping appointment/i,
+  );
 
   // Adjust the start (form values survive the 409) and book again.
   await page.getByTestId('booking-start').fill('2030-01-01T11:00');
@@ -190,8 +194,9 @@ test('reschedule into an overlapping slot surfaces a 409 and keeps the original 
   await page.getByTestId('save-reschedule').click();
 
   // The Conflict check rejects the overlap; the dialog stays open with the reason.
+  // Same wording-tolerant Conflict assertion as the booking case above.
   await expect(page.getByTestId('field-error-start')).toContainText(
-    'Conflicts with an appointment',
+    /Conflicts with an appointment|overlapping appointment/i,
   );
   await expect(page.getByTestId('reschedule-dialog')).toBeVisible();
 

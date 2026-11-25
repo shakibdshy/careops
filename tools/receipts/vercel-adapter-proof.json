@@ -1,0 +1,6 @@
+{
+  "proof": "the Vercel adapter function (apps/web/api/ssr.mjs) drives both the API proxy and the SSR handler",
+  "backend": "http://localhost:3102",
+  "measuredAt": "2026-11-25T13:28:38.453Z",
+  "failures": []
+}

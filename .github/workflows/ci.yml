@@ -21,14 +21,52 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
+      # The notification sink: deliveries from both backends land here and
+      # the conformance suite polls its HTTP API.
+      mailpit:
+        image: axllent/mailpit:latest
+        ports:
+          - 1025:1025
+          - 8025:8025
+        options: >-
+          --health-cmd "/mailpit readyz"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      # The Go replica's database (ADR-0014): the seam + store tests run
+      # against this instance as the restricted app role, with migrations
+      # applied by the owner first (the Go tests bootstrap themselves).
+      postgres:
+        image: postgres:17-alpine
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: careops
+          POSTGRES_PASSWORD: careops-local-only
+          POSTGRES_DB: careops_go
+        options: >-
+          --health-cmd "pg_isready -U careops -d careops_go"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     env:
       REDIS_URL: redis://localhost:6379
+      DATABASE_URL: postgres://careops_app:careops-app-local-only@localhost:5432/careops_go?sslmode=disable
+      MIGRATIONS_DATABASE_URL: postgres://careops:careops-local-only@localhost:5432/careops_go?sslmode=disable
     steps:
       - uses: actions/checkout@v5
 
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
+
+      # The Go replica (apps/api-go) is a first-class turbo member: its lint,
+      # typecheck, test and build tasks run inside the same turbo invocation
+      # as the TypeScript packages, so the Go toolchain must be pinned first.
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/api-go/go.mod
+          cache-dependency-path: apps/api-go/go.sum
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -38,6 +76,17 @@ jobs:
 
       - name: Typecheck
         run: bun run typecheck
+
+      # Warm the mongod binary cache in ONE process before jest's parallel
+      # workers ever need it (Go-T02 root cause): on a cold runner cache, every
+      # memory-server worker raced on the same download lockfile, a stale lock
+      # was left behind, and the next jest invocation failed every e2e suite
+      # with UnableToUnlockLockfileError. A stale lock from any interrupted
+      # run is removed before warming.
+      - name: Warm the mongod binary cache (single process)
+        run: |
+          rm -f ~/.cache/mongodb-binaries/*.lock
+          cd apps/api && bun -e 'const { MongoMemoryReplSet } = await import("mongodb-memory-server"); const rs = await MongoMemoryReplSet.create({ replSet: { count: 1, name: "rs0" } }); console.log("mongod warm:", rs.getUri()); await rs.stop();'
 
       - name: Test
         run: bun run test
@@ -57,6 +106,90 @@ jobs:
 
       - name: Build
         run: bun run build
+
+      # Contract drift (Go-T01): the committed OpenAPI artifacts must match
+      # what the API serves. Regenerates from a live boot (ephemeral Mongo;
+      # Redis comes from the CI service container) and fails the PR on any
+      # uncommitted difference.
+      - name: API contract drift check
+        run: bun run contract:check
+
+      # Conformance target (Go-T04): boot the reference API over real HTTP on
+      # :3101 against an ephemeral replica set kept alive for the job, then
+      # run the black-box suite against it. HTTP-only, target pinned to
+      # `reference` so any parity-ledger entry is a hard failure.
+      - name: Boot the reference API (conformance target)
+        run: |
+          cd apps/api
+          nohup bun -e 'const { MongoMemoryReplSet } = await import("mongodb-memory-server"); const rs = await MongoMemoryReplSet.create({ replSet: { count: 1, name: "rs0" } }); await Bun.write("/tmp/conformance-mongo-uri", rs.getUri("careops-conformance")); console.log("conformance mongo up"); setInterval(() => {}, 1073741824);' > /tmp/conformance-mongo.log 2>&1 &
+          for i in $(seq 1 30); do [ -s /tmp/conformance-mongo-uri ] && break; sleep 1; done
+          test -s /tmp/conformance-mongo-uri || { cat /tmp/conformance-mongo.log; exit 1; }
+          MONGO_URI=$(cat /tmp/conformance-mongo-uri)
+          echo "CONFORMANCE_MONGO_URI=$MONGO_URI" >> "$GITHUB_ENV"
+          PORT=3101 MONGODB_URI="$MONGO_URI" REDIS_URL="$REDIS_URL" BETTER_AUTH_SECRET=test-secret-only-for-the-e2e-harness-1234567890 NOTIFICATIONS_QUEUE_NAME=notifications-conformance nohup node dist/main.js > /tmp/reference-api.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf http://localhost:3101/api/health >/dev/null 2>&1 && break; sleep 1; done
+          curl -sf http://localhost:3101/api/health
+
+      - name: Conformance suite (reference target)
+        run: cd packages/contract && CONTRACT_TARGET=reference CONTRACT_BASE_URL=http://localhost:3101 bun test
+
+      # Go contract codegen drift (Go-T05): the committed Go bindings must
+      # match the committed OpenAPI artifacts exactly.
+      - name: Go contract codegen drift check
+        run: |
+          cd apps/api-go
+          go tool oapi-codegen -config gen/cfg.yaml ../../packages/contract/openapi/api.json
+          cd ../.. && git diff --exit-code -- apps/api-go/gen
+
+      # Go store codegen drift (Go-T06): the sqlc output must match the SQL
+      # queries and the migrations schema exactly.
+      - name: Go store codegen drift check
+        run: |
+          cd apps/api-go
+          go tool sqlc generate
+          cd ../.. && git diff --exit-code -- apps/api-go/internal/store
+
+      # Conformance target `go` (Go-T05): the skeleton serves health and the
+      # committed documents; ledgered areas fail and are swallowed by the
+      # ledger probe — and any ledgered area that PASSES fails the run, so
+      # the ledger can only shrink honestly.
+      - name: Conformance suite (go target)
+        run: |
+          cd apps/api-go
+          CONTRACT_OPENAPI_DIR=../../packages/contract/openapi go build -o /tmp/api-go-server ./cmd/server
+          PORT=3102 CONTRACT_OPENAPI_DIR=../../packages/contract/openapi \
+            DATABASE_URL="$DATABASE_URL" MIGRATIONS_DATABASE_URL="$MIGRATIONS_DATABASE_URL" \
+            nohup /tmp/api-go-server > /tmp/api-go-conformance.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://localhost:3102/api/health >/dev/null 2>&1 && break; sleep 1; done
+          curl -sf http://localhost:3102/api/health
+          cd ../../packages/contract
+          CONTRACT_TARGET=go CONTRACT_BASE_URL=http://localhost:3102 bun test
+
+      # Browser tests (Go-T18): the Playwright suite runs against BOTH
+      # backends. The reference-backed run boots the built API (fast boot —
+      # watch mode would blow the webServer timeout) against the conformance
+      # Mongo replica set; the Go-backed run proxies the web dev server at
+      # the Go service from the step above and expects its badge.
+      - name: Install Playwright browsers
+        run: cd apps/web && bunx playwright install --with-deps chromium
+      - name: Browser tests (reference-backed)
+        env:
+          API_START_COMMAND: node dist/main.js
+          MONGODB_URI: ${{ env.CONFORMANCE_MONGO_URI }}
+          BETTER_AUTH_SECRET: test-secret-only-for-the-e2e-harness-1234567890
+          NOTIFICATIONS_QUEUE_NAME: notifications-e2e
+          BETTER_AUTH_URL: http://localhost:3001
+        run: cd apps/web && bunx playwright test
+      - name: Browser tests (Go-backed origin)
+        env:
+          API_START_COMMAND: node dist/main.js
+          MONGODB_URI: ${{ env.CONFORMANCE_MONGO_URI }}
+          BETTER_AUTH_SECRET: test-secret-only-for-the-e2e-harness-1234567890
+          NOTIFICATIONS_QUEUE_NAME: notifications-e2e
+          BETTER_AUTH_URL: http://localhost:3001
+          API_PROXY_TARGET: http://localhost:3102
+          EXPECT_IMPLEMENTATION: go
+        run: cd apps/web && bunx playwright test
 
       # PR safety (W3-T5): the stack must synthesize cleanly with no AWS
       # credentials — env-agnostic synth, template asserted on disk. Deploys

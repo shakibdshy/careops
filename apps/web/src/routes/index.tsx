@@ -38,9 +38,25 @@ const FEATURES = [
   },
 ];
 
+// Which backend is serving (Go-T10). The health response's dependency keys
+// are implementation-specific, so the store list renders whatever the
+// backend reports instead of assuming a fixed set.
+const IMPLEMENTATION_LABEL: Record<string, string> = {
+  nestjs: 'NestJS · MongoDB',
+  go: 'Go · PostgreSQL',
+};
+
+const STORE_KEYS = ['mongo', 'redis', 'postgres'] as const;
+
 function HealthBadge({ response }: { response: HealthResponse }) {
   const healthy = response.status === 'ok';
-  const stores = `${response.mongo === 'up' ? 'mongo up' : 'mongo down'} · ${response.redis === 'up' ? 'redis up' : 'redis down'}`;
+  const stores = STORE_KEYS.map((key) => {
+    const upDown = response[key];
+    return upDown === undefined ? null : `${key} ${upDown}`;
+  })
+    .filter(Boolean)
+    .join(' · ');
+  const label = IMPLEMENTATION_LABEL[response.implementation ?? ''] ?? response.implementation;
   return (
     <span
       data-testid="health-badge"
@@ -52,7 +68,9 @@ function HealthBadge({ response }: { response: HealthResponse }) {
       )}
     >
       <span className={cn('size-1.5 rounded-full', healthy ? 'bg-success' : 'bg-warning')} />
-      API {healthy ? 'healthy' : 'degraded'}: {response.service} ({stores})
+      API {healthy ? 'healthy' : 'degraded'}: {response.service}
+      {label ? ` — ${label}` : ''}
+      {stores ? ` (${stores})` : ''}
     </span>
   );
 }

@@ -195,7 +195,14 @@ in the template tests) routing `/api/*` to an **ECS Fargate** service — each
 replica 0.5 vCPU / 1 GB in private subnets — reading MongoDB **Atlas** via a
 runtime secret and **ElastiCache** Redis for the report cache and job queue.
 
-The service auto-scales on two **target-tracking** policies inside
+The Go replica tier (ADR-0014/0016) rides the same shape as a third
+Fargate service: its own RDS PostgreSQL 17 in the private subnets, the same
+CPU target-tracking policy, request-count scaling added only when its
+hostname is routed, and migrations applied by the image before it serves.
+The two API tiers do not share data or cache keys — scaling either is
+independent.
+
+The reference service auto-scales on two **target-tracking** policies inside
 `minCapacity`/`maxCapacity` bounds (default 1–4, both deploy-time
 configurable):
 

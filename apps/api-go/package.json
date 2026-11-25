@@ -1,0 +1,12 @@
+{
+  "name": "@careops/api-go",
+  "version": "0.0.1",
+  "private": true,
+  "description": "The Go replica of the CareOps REST API on PostgreSQL (spec #59). Tooling is pinned inside go.mod via `tool` directives — no global installs.",
+  "scripts": {
+    "build": "go build -o dist/server ./cmd/server",
+    "test": "go test ./...",
+    "typecheck": "go vet ./...",
+    "lint": "go tool golangci-lint run"
+  }
+}

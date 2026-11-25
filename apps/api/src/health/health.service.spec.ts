@@ -22,6 +22,7 @@ describe('HealthService', () => {
     await expect(service.check()).resolves.toEqual({
       status: 'ok',
       service: 'careops-api',
+      implementation: 'nestjs',
       mongo: 'up',
       redis: 'up',
     });
@@ -35,6 +36,7 @@ describe('HealthService', () => {
     await expect(service.check()).resolves.toEqual({
       status: 'degraded',
       service: 'careops-api',
+      implementation: 'nestjs',
       mongo: 'down',
       redis: 'up',
     });
@@ -48,6 +50,7 @@ describe('HealthService', () => {
     await expect(service.check()).resolves.toEqual({
       status: 'degraded',
       service: 'careops-api',
+      implementation: 'nestjs',
       mongo: 'up',
       redis: 'down',
     });
@@ -61,6 +64,7 @@ describe('HealthService', () => {
     await expect(service.check()).resolves.toEqual({
       status: 'degraded',
       service: 'careops-api',
+      implementation: 'nestjs',
       mongo: 'down',
       redis: 'up',
     });

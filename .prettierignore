@@ -7,5 +7,9 @@ bun.lock
 playwright-report
 test-results
 routeTree.gen.ts
+cdk.out
 # Generated measurement artifacts (W2-T9 receipts): data, not source.
 tools/receipts
+# Generated API contract artifacts (Go-T01): data, not source — regenerated
+# by `bun run contract:generate`, drift-checked in CI.
+packages/contract/openapi

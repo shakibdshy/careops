@@ -2,6 +2,9 @@ import { CfnOutput, Duration, RemovalPolicy, Stack, type StackProps } from 'aws-
 import type { Construct } from 'constructs';
 import {
   GatewayVpcEndpointAwsService,
+  InstanceClass,
+  InstanceSize,
+  InstanceType,
   InterfaceVpcEndpointAwsService,
   Port,
   SecurityGroup,
@@ -18,6 +21,12 @@ import {
   Protocol,
   Secret as EcsSecret,
 } from 'aws-cdk-lib/aws-ecs';
+import {
+  DatabaseInstance,
+  DatabaseInstanceEngine,
+  Credentials as DbCredentials,
+  PostgresEngineVersion,
+} from 'aws-cdk-lib/aws-rds';
 import {
   ApplicationLoadBalancer,
   ApplicationProtocol,
@@ -68,12 +77,21 @@ export interface CareOpsStackProps extends StackProps {
   readonly domainName?: string;
   /** Override the Redis URL. Defaults to ElastiCache (aws) or compose (floci). */
   readonly redisUrl?: string;
+  /** ECR image tag for the Go replica (W4 Go-T15). */
+  readonly goImageTag?: string;
+  /**
+   * Public hostname for the Go replica's /api/* (host-routed alongside the
+   * reference API on the shared ALB — ADR-0016). Requires certificateArn +
+   * domainName so both hosts share the viewer certificate.
+   */
+  readonly goDomainName?: string;
 }
 
 const API_PORT = 3001;
 const HEALTH_PATH = '/api/health';
 const WEB_PORT = 3000;
 const WEB_HEALTH_PATH = '/healthz';
+const GO_PORT = 3102;
 
 /**
  * CareOps deploy stack (ADR-0012): a stateless API tier and an SSR web tier on
@@ -97,6 +115,11 @@ export class CareOpsStack extends Stack {
   readonly mongoSecret: Secret;
   readonly authSecret: Secret;
   readonly smtpSecret: Secret;
+  readonly goRepository: Repository;
+  readonly goTargetGroup: ApplicationTargetGroup;
+  readonly goService: FargateService;
+  readonly goDb: DatabaseInstance;
+  readonly goDbUrlSecret: Secret;
 
   constructor(scope: Construct, id: string, props: CareOpsStackProps) {
     super(scope, id, props);
@@ -145,6 +168,12 @@ export class CareOpsStack extends Stack {
       removalPolicy: RemovalPolicy.DESTROY,
       emptyOnDelete: true,
     });
+    this.goRepository = new Repository(this, 'GoRepository', {
+      repositoryName: 'careops-api-go',
+      imageScanOnPush: true,
+      removalPolicy: RemovalPolicy.DESTROY,
+      emptyOnDelete: true,
+    });
 
     // --- Secrets (empty shells; populated out-of-band, never inline) --------
     this.mongoSecret = new Secret(this, 'MongoUri', {
@@ -158,6 +187,12 @@ export class CareOpsStack extends Stack {
     this.smtpSecret = new Secret(this, 'SmtpUrl', {
       secretName: 'careops/smtp-url',
       description: 'SMTP transport URL. Populate after deploy.',
+    });
+    this.goDbUrlSecret = new Secret(this, 'GoDbUrl', {
+      secretName: 'careops/go-database-url',
+      description:
+        'Go replica PostgreSQL URL (postgres://careops_admin:pw@host:5432/careops_go). ' +
+        'Populate from the RDS-generated master secret after deploy.',
     });
 
     // --- Data: ElastiCache Redis (shared cache + queue, ADR-0011) ----------
@@ -201,6 +236,9 @@ export class CareOpsStack extends Stack {
     // The public app origin, when the operator names a custom domain: feeds
     // better-auth's cookie policy + trusted origins for same-origin auth.
     const appUrl = props.domainName ? `https://${props.domainName}` : undefined;
+    // The Go origin (ADR-0016): the web is served there too, so sign-in on
+    // the Go link sends THAT origin — it must be trusted by the Go service.
+    const goAppUrl = props.goDomainName ? `https://${props.goDomainName}` : undefined;
     const redisUrl =
       props.redisUrl ??
       (props.target === 'floci'
@@ -254,6 +292,98 @@ export class CareOpsStack extends Stack {
       assignPublicIp: false,
       vpcSubnets: { subnetType: SubnetType.PRIVATE_WITH_EGRESS },
       securityGroups: [serviceSg],
+      healthCheckGracePeriod: Duration.seconds(60),
+      minHealthyPercent: 100,
+      maxHealthyPercent: 200,
+      circuitBreaker: { rollback: true },
+    });
+
+    // --- Go replica tier (Go-T15): RDS PostgreSQL + a third Fargate service
+    // behind the same ALB, host-routed alongside the reference API (ADR-0014,
+    // ADR-0016). The replica owns its own database: MongoDB and PostgreSQL
+    // never share data — one web app, two backends. The data-plane URL comes
+    // from a Secrets Manager shell populated out-of-band (the repo's secret
+    // convention); the RDS instance backs it on aws (floci binds compose
+    // Postgres — RDS itself is not emulated there).
+    const goDbSg = new SecurityGroup(this, 'GoDbSg', {
+      vpc: this.vpc,
+      description: 'CareOps Go PostgreSQL ingress',
+      allowAllOutbound: false,
+    });
+    this.goDb = new DatabaseInstance(this, 'GoDb', {
+      engine: DatabaseInstanceEngine.postgres({
+        version: PostgresEngineVersion.VER_17,
+      }),
+      instanceType: InstanceType.of(InstanceClass.T4G, InstanceSize.MICRO),
+      vpc: this.vpc,
+      vpcSubnets: { subnetType: SubnetType.PRIVATE_WITH_EGRESS },
+      credentials: DbCredentials.fromGeneratedSecret('careops_admin', {
+        secretName: 'careops/go-postgres',
+      }),
+      databaseName: 'careops_go',
+      port: 5432,
+      publiclyAccessible: false,
+      autoMinorVersionUpgrade: true,
+      storageEncrypted: true,
+      backupRetention: Duration.days(7),
+      deletionProtection: false,
+      // Snapshot on destroy: the replica's data outlives the stack.
+      removalPolicy: RemovalPolicy.SNAPSHOT,
+    });
+
+    const goServiceSg = new SecurityGroup(this, 'GoServiceSg', {
+      vpc: this.vpc,
+      description: 'CareOps Go Fargate tasks',
+      allowAllOutbound: true,
+    });
+    goDbSg.addIngressRule(goServiceSg, Port.tcp(5432), 'Go service to Postgres');
+
+    const goTaskDef = new FargateTaskDefinition(this, 'GoTask', {
+      cpu: 512,
+      memoryLimitMiB: 1024,
+    });
+    goTaskDef.addContainer('api-go', {
+      image: ContainerImage.fromEcrRepository(this.goRepository, props.goImageTag ?? 'latest'),
+      logging: LogDriver.awsLogs({ logGroup, streamPrefix: 'api-go' }),
+      portMappings: [{ containerPort: GO_PORT, protocol: Protocol.TCP }],
+      environment: {
+        PORT: String(GO_PORT),
+        SERVICE_NAME: 'careops-api',
+        IMPLEMENTATION: 'go',
+        CONTRACT_OPENAPI_DIR: '/app/openapi',
+        REDIS_URL: redisUrl,
+        // The web is served on BOTH origins (host routing, ADR-0016); sign-in
+        // on the Go link sends that link's origin, so both named origins are
+        // trusted — csv, which the Go config splits. BETTER_AUTH_URL names
+        // this tier's own origin.
+        ...(appUrl || goAppUrl
+          ? {
+              BETTER_AUTH_URL: goAppUrl ?? appUrl,
+              TRUSTED_ORIGINS: [appUrl, goAppUrl].filter(Boolean).join(','),
+            }
+          : {}),
+      },
+      secrets: {
+        // Both URLs point at the same RDS master connection: the binary
+        // applies its embedded migrations first, then serves — FORCE RLS
+        // (migration 0009) keeps the org guard real on the owner role too.
+        DATABASE_URL: EcsSecret.fromSecretsManager(this.goDbUrlSecret),
+        MIGRATIONS_DATABASE_URL: EcsSecret.fromSecretsManager(this.goDbUrlSecret),
+        BETTER_AUTH_SECRET: EcsSecret.fromSecretsManager(this.authSecret),
+        SMTP_URL: EcsSecret.fromSecretsManager(this.smtpSecret),
+      },
+      // No container-level healthCheck: the image is distroless (no shell for
+      // CMD-SHELL). The target group's health check gates traffic and the
+      // deployment circuit breaker gates rollout — equivalent coverage.
+    });
+
+    this.goService = new FargateService(this, 'GoService', {
+      cluster,
+      taskDefinition: goTaskDef,
+      desiredCount: props.desiredCount,
+      assignPublicIp: false,
+      vpcSubnets: { subnetType: SubnetType.PRIVATE_WITH_EGRESS },
+      securityGroups: [goServiceSg],
       healthCheckGracePeriod: Duration.seconds(60),
       minHealthyPercent: 100,
       maxHealthyPercent: 200,
@@ -346,6 +476,28 @@ export class CareOpsStack extends Stack {
     this.webService.attachToApplicationTargetGroup(this.webTargetGroup);
     this.webService.connections.allowFrom(this.loadBalancer, Port.tcp(WEB_PORT), 'ALB to web');
 
+    // Go replica target group: same health-check shape, own port. Attached
+    // here (post-listener so request-count scaling can resolve its ALB
+    // label); the host-routed listener rule below sends it traffic only
+    // when the operator names the Go host.
+    this.goTargetGroup = new ApplicationTargetGroup(this, 'GoTargetGroup', {
+      vpc: this.vpc,
+      port: GO_PORT,
+      protocol: ApplicationProtocol.HTTP,
+      targetType: TargetType.IP,
+      healthCheck: {
+        path: HEALTH_PATH,
+        interval: Duration.seconds(30),
+        timeout: Duration.seconds(5),
+        healthyThresholdCount: 2,
+        unhealthyThresholdCount: 3,
+      },
+    });
+    this.goService.attachToApplicationTargetGroup(this.goTargetGroup);
+    this.goService.connections.allowFrom(this.loadBalancer, Port.tcp(GO_PORT), 'ALB to Go');
+
+    // Go replica target group: same health-check shape, own port.
+
     const httpListener = this.loadBalancer.addListener('HttpListener', {
       port: 80,
       protocol: ApplicationProtocol.HTTP,
@@ -353,8 +505,21 @@ export class CareOpsStack extends Stack {
       // API off first. One listener, one domain, same-origin by construction.
       defaultAction: ListenerAction.forward([this.webTargetGroup]),
     });
-    // The /api/* rule (priority 10) outranks the /* default, so the API keeps
-    // its namespace on the shared domain.
+    // Routing (ADR-0016): one web image, two backends. The Go replica's host
+    // sends its /api/* to the Go target group (priority 5); every other
+    // /api/* goes to the reference API (priority 10); the default is the web
+    // tier. Without goDomainName only the reference origin routes — the Go
+    // tier exists but waits for the operator's named deploy.
+    if (props.goDomainName) {
+      httpListener.addAction('GoApiRoute', {
+        priority: 5,
+        conditions: [
+          ListenerCondition.hostHeaders([props.goDomainName]),
+          ListenerCondition.pathPatterns(['/api/*']),
+        ],
+        action: ListenerAction.forward([this.goTargetGroup]),
+      });
+    }
     httpListener.addAction('ApiRoute', {
       priority: 10,
       conditions: [ListenerCondition.pathPatterns(['/api/*'])],
@@ -404,6 +569,27 @@ export class CareOpsStack extends Stack {
       scaleInCooldown: Duration.seconds(180),
     });
 
+    // Go tier scales like the API tier (same bounds lever). Request-count
+    // tracking needs the host rule (which attaches the TG to the listener);
+    // without a named Go host the tier scales on CPU alone.
+    const goScaling = this.goService.autoScaleTaskCount({
+      minCapacity: props.minCapacity ?? props.desiredCount,
+      maxCapacity: props.maxCapacity ?? 4,
+    });
+    goScaling.scaleOnCpuUtilization('ScaleOnCpu', {
+      targetUtilizationPercent: 60,
+      scaleOutCooldown: Duration.seconds(60),
+      scaleInCooldown: Duration.seconds(180),
+    });
+    if (props.goDomainName) {
+      goScaling.scaleOnRequestCount('ScaleOnRequests', {
+        requestsPerTarget: 500,
+        targetGroup: this.goTargetGroup,
+        scaleOutCooldown: Duration.seconds(60),
+        scaleInCooldown: Duration.seconds(180),
+      });
+    }
+
     // --- CloudFront: TLS + static-asset caching in front of the ALB --------
     // Same-origin by construction: one edge domain serves /* (web, never
     // cached, cookies forwarded), /api/* (API, same policy) and /assets/*
@@ -444,7 +630,7 @@ export class CareOpsStack extends Stack {
       ...(props.certificateArn && props.domainName
         ? {
             certificate: Certificate.fromCertificateArn(this, 'EdgeCert', props.certificateArn),
-            domainNames: [props.domainName],
+            domainNames: [props.domainName, ...(props.goDomainName ? [props.goDomainName] : [])],
           }
         : {}),
     });
@@ -467,5 +653,16 @@ export class CareOpsStack extends Stack {
     new CfnOutput(this, 'MongoSecretArn', { value: this.mongoSecret.secretArn });
     new CfnOutput(this, 'BetterAuthSecretArn', { value: this.authSecret.secretArn });
     new CfnOutput(this, 'SmtpSecretArn', { value: this.smtpSecret.secretArn });
+    new CfnOutput(this, 'GoEcrRepositoryUri', { value: this.goRepository.repositoryUri });
+    new CfnOutput(this, 'GoServiceName', { value: this.goService.serviceName });
+    new CfnOutput(this, 'GoDbEndpoint', {
+      value: this.goDb.dbInstanceEndpointAddress,
+      description: 'RDS PostgreSQL endpoint for the Go replica',
+    });
+    new CfnOutput(this, 'GoDbSecretArn', {
+      value: this.goDb.secret?.secretArn ?? 'n/a',
+      description: 'RDS-generated master credentials for the Go database',
+    });
+    new CfnOutput(this, 'GoDbUrlSecretArn', { value: this.goDbUrlSecret.secretArn });
   }
 }

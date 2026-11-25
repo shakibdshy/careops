@@ -64,7 +64,7 @@ and a keyless CI/CD pipeline — with receipts for every performance claim.
 | CI/CD    | GitHub Actions — gates per PR; keyless OIDC deploy on merge to `main`                         |
 | Docs     | Swagger UI at **[/api/docs](http://localhost:3001/api/docs)**                                 |
 
-Decisions and their trade-offs live in [docs/adr/](docs/adr) (12 ADRs); domain
+Decisions and their trade-offs live in [docs/adr/](docs/adr) (20 ADRs); domain
 language in [GLOSSARY.md](GLOSSARY.md).
 
 ## Architecture
@@ -80,11 +80,16 @@ apps/
 packages/
   shared/ Zod schemas — single source of truth for API validation,
           Swagger, and web typing (both directions)
-infra/    AWS CDK stack — Fargate (API + web SSR) behind one ALB, CloudFront,
-          ElastiCache, Secrets Manager; also deploys to the Floci AWS emulator
+  contract/ Committed OpenAPI documents + the black-box conformance suite
+          that every backend must pass (97 cases, both targets)
+  api-go/ Go replica — the same REST contract from PostgreSQL (pgx + sqlc,
+          RLS-guarded tenancy, Postgres-backed queue; ADR-0013–0020)
+infra/    AWS CDK stack — Fargate (API + web SSR + Go replica) behind one
+          ALB, CloudFront, ElastiCache, RDS PostgreSQL, Secrets Manager; also
+          deploys to the Floci AWS emulator
 tools/    Receipt runners — index explain, N+1, cache, k6, lighthouse,
           origin proof; measured outputs in tools/receipts/
-docs/     12 ADRs, performance + scaling narratives
+docs/     20 ADRs, performance + scaling narratives
 ```
 
 - **Multi-tenancy**: discriminator key (`organizationId` on every domain
@@ -108,15 +113,38 @@ docs/     12 ADRs, performance + scaling narratives
   start − 24h that cancel themselves when the Appointment is cancelled or moved
   past the reminder time.
 
+## One web app, two backends
+
+The repo also contains a **second implementation of the same REST API**:
+`apps/api-go` serves the identical contract from PostgreSQL, and the same
+web app runs unchanged against either backend. It exists because the
+contract is worth proving twice — one black-box conformance suite (97 cases)
+runs against both backends on every PR, the parity ledger shrank to empty,
+and the same k6 scenario measures both. See ADR-0013–0015 for why a replica,
+why its own PostgreSQL, and how the committed OpenAPI contract holds across
+languages. Demo credentials work on both: `owner@demo.careops` /
+`careops-demo-1` (the badge shows which backend is serving).
+
 ## Deployment — all-AWS, in-repo CDK
 
-CareOps deploys as two **stateless** ECS Fargate services — the NestJS API
-(`/api/*`) and the TanStack Start SSR web server (`/*`) — behind **one ALB
-with no sticky sessions**, fronted by CloudFront for TLS and static-asset
-caching. MongoDB Atlas is the only service outside AWS; Redis is ElastiCache;
-secrets resolve from Secrets Manager at task runtime, never in the image.
-Full story: [ADR-0012](docs/adr/0012-aws-deployment-architecture.md),
-runbook: [infra/README.md](infra/README.md).
+CareOps ships two deployment shapes from one origin contract:
+
+- **The live demo** runs the web on **Vercel** and the Go replica on
+  **Render** (its own Render PostgreSQL + Key Value): one catch-all Vercel
+  function proxies `/api/*` to the Render service — same-origin for the
+  browser, so cookies stay first-party — and runs the SSR handler for
+  everything else (`apps/web/api/ssr.mjs`, `apps/web/vercel.json`,
+  `render.yaml` in the repo root; quick path in
+  [docs/runbook.md](docs/runbook.md)).
+- **The AWS stack** (`infra/`) is the production-shaped definition: **three
+  stateless ECS Fargate services** behind **one ALB with no sticky
+  sessions**, fronted by CloudFront — the web, the reference NestJS API on
+  the main origin, and the Go replica on RDS PostgreSQL 17 behind a second
+  origin via host-based routing (ADR-0016). MongoDB Atlas is the only
+  service outside AWS; Redis is ElastiCache; database credentials are
+  generated into Secrets Manager; secrets resolve at task runtime, never in
+  the image. Full story: [ADR-0012](docs/adr/0012-aws-deployment-architecture.md),
+  [ADR-0016](docs/adr/0016-host-based-routing-two-backends-one-origin-shape.md).
 
 - **Same-origin by construction** — one domain serves both `/*` and `/api/*`,
   so BetterAuth cookies and CSRF work unchanged (no CORS, no cross-site

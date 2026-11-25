@@ -1,0 +1,56 @@
+{
+  "scenario": "full k6 suite per backend: dashboard WARM (cache settled), dashboard COLD (generation bumped every 20ms), appointments-list (first page + 2 cursor-deep pages); 10 VUs, 30s each",
+  "dataset": "identical dev-demo orgs with the same 40-patient x 3-appointment Fix-cmp fixture batch per backend",
+  "environment": "local docker compose (mongo rs0 + postgres 17 + redis 7), both APIs native, measured 2026-11-25",
+  "honesty": "local numbers, not AWS; different persistence engines (Mongo vs PostgreSQL) and runtimes (Node vs Go) behind one identical HTTP contract",
+  "results": {
+    "go": {
+      "warm": {
+        "daily-volume": 14.87,
+        "provider-utilization": 10.86,
+        "status-breakdown": 8.6,
+        "today": 8.28
+      },
+      "cold": {
+        "daily-volume": 15.88,
+        "provider-utilization": 10.99,
+        "status-breakdown": 8.94,
+        "today": 7.91
+      },
+      "warmTotalRequests": 1310,
+      "failuresWarm": 0,
+      "listFirstPageP95": 18.93,
+      "listDeepPageP95": 12.04,
+      "listFailures": 0,
+      "driftFactor": null,
+      "normalizedCachedRatio": {
+        "daily-volume": 1.07,
+        "provider-utilization": 1.01
+      }
+    },
+    "nestjs": {
+      "warm": {
+        "daily-volume": 41.66,
+        "provider-utilization": 25.02,
+        "status-breakdown": 17.39,
+        "today": 14.14
+      },
+      "cold": {
+        "daily-volume": 40.3,
+        "provider-utilization": 24.78,
+        "status-breakdown": 16.61,
+        "today": 14.26
+      },
+      "warmTotalRequests": 1080,
+      "failuresWarm": 0,
+      "listFirstPageP95": 44.3,
+      "listDeepPageP95": 25.71,
+      "listFailures": 0,
+      "driftFactor": null,
+      "normalizedCachedRatio": {
+        "daily-volume": 0.99,
+        "provider-utilization": 1.01
+      }
+    }
+  }
+}

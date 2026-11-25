@@ -17,10 +17,13 @@ describe('Health (e2e)', () => {
     await mongo.stop();
   });
 
-  it('GET /api/health reports ok with connected stores', () => {
-    return request(app.getHttpServer())
-      .get('/api/health')
-      .expect(200)
-      .expect({ status: 'ok', service: 'careops-api', mongo: 'up', redis: 'up' });
+  it('GET /api/health reports ok, the implementation, and connected stores', () => {
+    return request(app.getHttpServer()).get('/api/health').expect(200).expect({
+      status: 'ok',
+      service: 'careops-api',
+      implementation: 'nestjs',
+      mongo: 'up',
+      redis: 'up',
+    });
   });
 });

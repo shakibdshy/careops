@@ -17,7 +17,9 @@
 //   bun tools/k6/run.mjs
 //
 // Env: BASE_URL, MONGODB_URI, REDIS_URL, VUS, DURATION, DAYS, EMAIL, PASSWORD,
-// GEN_BUMP_MS. Defaults target the isolated receipts API on :3011.
+// GEN_BUMP_MS, ORG_ID (skip the Mongo org lookup — the Go replica has no
+// Mongo; pass the backend's own Organization id), RECEIPT_DIR (default
+// tools/receipts). Defaults target the isolated receipts API on :3011.
 
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
@@ -41,8 +43,8 @@ const PASSWORD = process.env.PASSWORD ?? 'careops-demo-1';
 const GEN_BUMP_MS = Number(process.env.GEN_BUMP_MS ?? 20);
 
 const scriptDir = new URL('.', import.meta.url);
-const receiptsDir = new URL('../receipts/', import.meta.url);
-const receiptPath = (name) => fileURLToPath(new URL(`../receipts/${name}`, import.meta.url));
+const receiptsDir = new URL(`${process.env.RECEIPT_DIR ?? '../receipts/'}`, import.meta.url);
+const receiptPath = (name) => fileURLToPath(new URL(`${name}`, receiptsDir));
 
 function runK6(script, extraEnv, duration = DURATION) {
   const args = [
@@ -104,15 +106,18 @@ async function main() {
     throw new Error(`API not reachable at ${BASE_URL}/api/health — boot the isolated API first.`);
   }
 
-  const client = new MongoClient(MONGODB_URI);
-  await client.connect();
-  const org = (
-    await client
-      .db()
-      .collection('patient')
-      .findOne({}, { projection: { organizationId: 1 } })
-  ).organizationId;
-  await client.close();
+  let org = process.env.ORG_ID;
+  if (!org) {
+    const client = new MongoClient(MONGODB_URI);
+    await client.connect();
+    org = (
+      await client
+        .db()
+        .collection('patient')
+        .findOne({}, { projection: { organizationId: 1 } })
+    ).organizationId;
+    await client.close();
+  }
 
   const redis = new Redis(REDIS_URL, { maxRetriesPerRequest: null });
   mkdirSync(receiptsDir, { recursive: true });

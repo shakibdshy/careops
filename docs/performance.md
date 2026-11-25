@@ -181,3 +181,46 @@ report reads above are single-digit ms).
   and normalization make its signal defensible rather than raw.
 - No number here is a target or an SLA. They are what this code measured on
   this hardware, with the command to reproduce them.
+
+## 5. The two backends, same contract, measured side by side
+
+The Go replica (ADR-0013/0014) serves the identical HTTP contract from
+PostgreSQL. Both backends were measured on this machine with the full k6
+suite (`tools/k6/run.mjs`, 10 VUs, 30 s per scenario): the dashboard warm
+(cache settled), the dashboard cold (the cache generation bumped every 20 ms
+so every cached read recomputes — ADR-0011's invalidation path), and the
+cursor-paginated appointments list (first page + two cursor-deep pages,
+never cached) — against the same demo dataset — 40 patients × 3 appointments
+loaded through each API (tools/parity-fixtures.mjs, receipts in
+`tools/receipts/comparison/go/` and `/nestjs/`, combined `summary.json`).
+
+| backend — dashboard p95 |    warm |    cold | status-breakdown (control, warm) |
+| ----------------------- | ------: | ------: | -------------------------------: |
+| NestJS · MongoDB        | 41.7 ms | 40.3 ms |                          17.4 ms |
+| Go · PostgreSQL         | 14.9 ms | 15.9 ms |                           8.6 ms |
+
+| backend — cursor list p95 | first page | deep pages | failures |
+| ------------------------- | ---------: | ---------: | -------- |
+| NestJS · MongoDB          |    44.3 ms |    25.7 ms | 0        |
+| Go · PostgreSQL           |    18.9 ms |    12.0 ms | 0        |
+
+The same suite was also run **through the ALB-shaped local proxy**
+(`tools/alb-sim.mjs`, `comparison/proxy/`): list p95 45.4/25.3 ms (NestJS)
+vs 21.0/12.0 ms (Go) — one proxy hop over the native numbers, same story.
+(The original single-scenario warm run — 141.6 vs 173.1 req/s, p95 42.1 vs
+13.4 ms — is preserved in `summary.json`'s history and the git log.)
+
+- The Go median is ~2.3× lower and p95 ~3× lower under this load. Part of
+  that is the runtime (compiled binary vs JIT), part is the data plane
+  (the Go reports are direct SQL aggregations over indexes; the reference
+  adds a Node→Mongo driver hop and MongoDB's pipeline execution).
+- Zero failures on both: the full functional contract (auth, tenancy,
+  booking conflicts) held under load on both implementations.
+- Query plans for the Go report queries are receipted alongside
+  (`tools/receipts/comparison/go-plan-*.txt`): the daily-volume zero-fill
+  plan is a bounded index/series scan, not a seq scan of the table.
+
+This is a local measurement on one machine — the same honesty rule as every
+other number in this repo. It demonstrates that the replica is a real
+second implementation with real performance characteristics, not that one
+database is universally faster than the other.
