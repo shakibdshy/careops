@@ -1,4 +1,4 @@
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import type { ClientSession, Connection } from 'mongoose';
 import type { OrgRequestContext } from '../data/org-scoped.repository.js';
 import type { CursorPage } from '@careops/shared';
@@ -34,8 +34,13 @@ const members: FullOrganization['members'] = [
   },
 ];
 
+// The shared booking schema accepts both backend id schemes (ObjectId here,
+// UUID on the Go replica); this API is Mongo-shaped, so its service path
+// guards non-ObjectId patientIds with a 400 before the Mongo lookup.
+const PATIENT_ID = 'a'.repeat(24);
+
 const validCreate = {
-  patientId: 'p1',
+  patientId: PATIENT_ID,
   memberId: 'member-2',
   start: '2026-11-20T10:00:00.000Z',
   durationMinutes: 30,
@@ -275,6 +280,26 @@ describe('AppointmentsService', () => {
     await expect(service.create(context, members, actor, { ...validCreate })).rejects.toThrow(
       NotFoundException,
     );
+  });
+
+  it('rejects a non-ObjectId patientId with 400 before the Mongo lookup', async () => {
+    // A UUID is valid for the shared schema (the Go replica's id scheme) but
+    // not for this API: the guard turns it into a field error, never a
+    // Mongoose CastError surfacing as a 500.
+    const service = new AppointmentsService(
+      fakeRepo(),
+      fakePatientRepo(false),
+      fakeAudit(),
+      fakeCache(),
+      fakeQueue(),
+      fakeConnection(),
+    );
+    await expect(
+      service.create(context, members, actor, {
+        ...validCreate,
+        patientId: '3f2c9a58-7d14-4b6e-9f0a-1c2d3e4f5a6b',
+      }),
+    ).rejects.toThrow(BadRequestException);
   });
 
   it('rejects an overlapping booking with 409 and writes no audit entry', async () => {
