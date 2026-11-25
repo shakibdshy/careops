@@ -8,6 +8,7 @@ package notifications
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/shakibdshy/careops/api-go/internal/store"
@@ -46,18 +47,28 @@ func EnqueuePatientCreated(ctx context.Context, tx store.DBTX, organizationID, p
 // EnqueueBooking schedules the booking confirmation and the Reminder (24h
 // ahead of the start) in the booking's transaction.
 func EnqueueBooking(ctx context.Context, tx store.DBTX, organizationID, appointmentID, patientID string, startsAt time.Time) error {
-	queries := store.New(tx)
-	if err := queries.EnqueueNotificationJob(ctx, store.EnqueueNotificationJobParams{
+	return errors.Join(
+		enqueueBooked(ctx, tx, organizationID, appointmentID, patientID),
+		EnqueueReminder(ctx, tx, organizationID, appointmentID, patientID, startsAt),
+	)
+}
+
+// enqueueBooked schedules the booking confirmation Notification.
+func enqueueBooked(ctx context.Context, tx store.DBTX, organizationID, appointmentID, patientID string) error {
+	return store.New(tx).EnqueueNotificationJob(ctx, store.EnqueueNotificationJobParams{
 		Kind:    KindAppointmentBooked,
 		Payload: marshalPayload(payload{OrganizationID: organizationID, PatientID: patientID, AppointmentID: appointmentID, Kind: KindAppointmentBooked}),
-	}); err != nil {
-		return err
-	}
-	remindAt := startsAt.Add(-ReminderLead)
-	return queries.EnqueueNotificationJob(ctx, store.EnqueueNotificationJobParams{
+	})
+}
+
+// EnqueueReminder schedules the Reminder job 24h ahead of the start (due now
+// if that moment already passed). Used by the booking path and by the demo
+// seed, which schedules the same reminders the API would have.
+func EnqueueReminder(ctx context.Context, tx store.DBTX, organizationID, appointmentID, patientID string, startsAt time.Time) error {
+	return store.New(tx).EnqueueNotificationJob(ctx, store.EnqueueNotificationJobParams{
 		Kind:    KindAppointmentReminder,
 		Payload: marshalPayload(payload{OrganizationID: organizationID, PatientID: patientID, AppointmentID: appointmentID, Kind: KindAppointmentReminder}),
-		RunAt:   pgtypeFromTime(remindAt),
+		RunAt:   pgtypeFromTime(startsAt.Add(-ReminderLead)),
 	})
 }
 
