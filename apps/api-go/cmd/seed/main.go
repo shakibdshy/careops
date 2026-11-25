@@ -61,17 +61,25 @@ type demoPatient struct {
 }
 
 var demoPatients = []demoPatient{
-	{firstName: "Ada", lastName: "Lovelace", dateOfBirth: "1990-12-10",
+	{
+		firstName: "Ada", lastName: "Lovelace", dateOfBirth: "1990-12-10",
 		phone: "555-0100", contactEmail: "ada.lovelace@example.test",
-		notes: "Prefers morning appointments."},
-	{firstName: "Grace", lastName: "Hopper", dateOfBirth: "1944-06-09",
+		notes: "Prefers morning appointments.",
+	},
+	{
+		firstName: "Grace", lastName: "Hopper", dateOfBirth: "1944-06-09",
 		phone: "555-0101", contactEmail: "grace.hopper@example.test",
-		notes: "Coordinate with her aide."},
-	{firstName: "Alan", lastName: "Turing", dateOfBirth: "1982-05-14",
-		contactEmail: "alan.turing@example.test"},
-	{firstName: "Katherine", lastName: "Johnson", dateOfBirth: "1978-11-05",
+		notes: "Coordinate with her aide.",
+	},
+	{
+		firstName: "Alan", lastName: "Turing", dateOfBirth: "1982-05-14",
+		contactEmail: "alan.turing@example.test",
+	},
+	{
+		firstName: "Katherine", lastName: "Johnson", dateOfBirth: "1978-11-05",
 		contactEmail: "katherine.johnson@example.test",
-		notes:        "Follow-up in two weeks."},
+		notes:        "Follow-up in two weeks.",
+	},
 }
 
 // demoAppointment mirrors the reference seed's AppointmentFixture: one clinic
@@ -91,46 +99,70 @@ type demoAppointment struct {
 var pastWeek = []int{-7, -6, -5, -4, -3, -2, -1}
 
 var demoAppointments = func() []demoAppointment {
-	fixtures := []demoAppointment{}
+	fixtures := make([]demoAppointment, 0, 2*len(pastWeek)+2+4+4)
 	// Completed visits across the past week feed the dashboard's volume trend.
 	for _, dayOffset := range pastWeek {
 		fixtures = append(fixtures,
-			demoAppointment{dayOffset: dayOffset, hour: 9, durationMinutes: 30,
-				status: "COMPLETED", patientIndex: abs(dayOffset) % len(demoPatients), provider: "owner"},
-			demoAppointment{dayOffset: dayOffset, hour: 10, durationMinutes: 30,
-				status: "COMPLETED", patientIndex: (abs(dayOffset) + 1) % len(demoPatients), provider: "admin"},
+			demoAppointment{
+				dayOffset: dayOffset, hour: 9, durationMinutes: 30,
+				status: "COMPLETED", patientIndex: abs(dayOffset) % len(demoPatients), provider: "owner",
+			},
+			demoAppointment{
+				dayOffset: dayOffset, hour: 10, durationMinutes: 30,
+				status: "COMPLETED", patientIndex: (abs(dayOffset) + 1) % len(demoPatients), provider: "admin",
+			},
 		)
 	}
 	// Terminal outcomes in the recent past feed the status-breakdown rates.
 	fixtures = append(fixtures,
-		demoAppointment{dayOffset: -2, hour: 11, durationMinutes: 30,
+		demoAppointment{
+			dayOffset: -2, hour: 11, durationMinutes: 30,
 			status: "CANCELLED", patientIndex: 1, provider: "member",
-			notes: "Patient requested a later date."},
-		demoAppointment{dayOffset: -3, hour: 14, durationMinutes: 30,
-			status: "NO_SHOW", patientIndex: 2, provider: "owner"},
+			notes: "Patient requested a later date.",
+		},
+		demoAppointment{
+			dayOffset: -3, hour: 14, durationMinutes: 30,
+			status: "NO_SHOW", patientIndex: 2, provider: "owner",
+		},
 	)
 	// Today: the clinic is mid-flow.
 	fixtures = append(fixtures,
-		demoAppointment{dayOffset: 0, hour: 9, durationMinutes: 30,
-			status: "CHECKED_IN", patientIndex: 0, provider: "owner", notes: "Arrived early."},
-		demoAppointment{dayOffset: 0, hour: 9, durationMinutes: 60,
-			status: "IN_PROGRESS", patientIndex: 1, provider: "admin"},
-		demoAppointment{dayOffset: 0, hour: 14, durationMinutes: 30,
-			status: "SCHEDULED", patientIndex: 3, provider: "owner"},
-		demoAppointment{dayOffset: 0, hour: 15, durationMinutes: 30,
-			status: "SCHEDULED", patientIndex: 2, provider: "member"},
+		demoAppointment{
+			dayOffset: 0, hour: 9, durationMinutes: 30,
+			status: "CHECKED_IN", patientIndex: 0, provider: "owner", notes: "Arrived early.",
+		},
+		demoAppointment{
+			dayOffset: 0, hour: 9, durationMinutes: 60,
+			status: "IN_PROGRESS", patientIndex: 1, provider: "admin",
+		},
+		demoAppointment{
+			dayOffset: 0, hour: 14, durationMinutes: 30,
+			status: "SCHEDULED", patientIndex: 3, provider: "owner",
+		},
+		demoAppointment{
+			dayOffset: 0, hour: 15, durationMinutes: 30,
+			status: "SCHEDULED", patientIndex: 2, provider: "member",
+		},
 	)
 	// Tomorrow: upcoming visits, some already confirmed — the reminder
 	// candidates (start − 24h).
 	fixtures = append(fixtures,
-		demoAppointment{dayOffset: 1, hour: 9, durationMinutes: 30,
-			status: "SCHEDULED", patientIndex: 0, provider: "owner"},
-		demoAppointment{dayOffset: 1, hour: 10, durationMinutes: 30,
-			status: "SCHEDULED", patientIndex: 1, provider: "admin"},
-		demoAppointment{dayOffset: 1, hour: 11, durationMinutes: 30,
-			status: "CONFIRMED", patientIndex: 2, provider: "owner"},
-		demoAppointment{dayOffset: 1, hour: 14, durationMinutes: 30,
-			status: "CONFIRMED", patientIndex: 3, provider: "member"},
+		demoAppointment{
+			dayOffset: 1, hour: 9, durationMinutes: 30,
+			status: "SCHEDULED", patientIndex: 0, provider: "owner",
+		},
+		demoAppointment{
+			dayOffset: 1, hour: 10, durationMinutes: 30,
+			status: "SCHEDULED", patientIndex: 1, provider: "admin",
+		},
+		demoAppointment{
+			dayOffset: 1, hour: 11, durationMinutes: 30,
+			status: "CONFIRMED", patientIndex: 2, provider: "owner",
+		},
+		demoAppointment{
+			dayOffset: 1, hour: 14, durationMinutes: 30,
+			status: "CONFIRMED", patientIndex: 3, provider: "member",
+		},
 	)
 	return fixtures
 }()
