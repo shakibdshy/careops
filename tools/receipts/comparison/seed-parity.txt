@@ -1,0 +1,12 @@
+# Demo-seed parity proof (Go-T18 / ticket #77) — 2026-11-25
+# Both backends seeded FRESH (apps/api/src/seed.ts on an ephemeral Mongo replica set; apps/api-go/cmd/seed on a fresh PostgreSQL database), served over HTTP, compared by tools/parity-check.mjs.
+# NESTJS_URL=http://localhost:3105 GO_URL=http://localhost:3104 bun tools/parity-check.mjs
+
+
+NestJS · MongoDB (http://localhost:3105)
+  org: Dana Owner's Organization — 3 members, 4/4 seed Patients, 24 appointments ({"CONFIRMED":2,"SCHEDULED":4,"IN_PROGRESS":1,"CHECKED_IN":1,"NO_SHOW":1,"CANCELLED":1,"COMPLETED":14}), 4 appointments today (reported, not compared)
+
+Go · PostgreSQL (http://localhost:3104)
+  org: Dana Owner's Organization — 3 members, 4/4 seed Patients, 24 appointments ({"COMPLETED":14,"SCHEDULED":4,"NO_SHOW":1,"CANCELLED":1,"CONFIRMED":2,"CHECKED_IN":1,"IN_PROGRESS":1}), 4 appointments today (reported, not compared)
+
+parity check OK: both backends hold the same demo dataset.

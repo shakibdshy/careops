@@ -1,12 +1,18 @@
 #!/usr/bin/env node
 // Demo-seed parity check (Go-T18): asserts both backends hold the same demo
-// dataset — same demo Members (roles from the org surface), same Patient
-// names, same Appointment count per day — by signing in on each origin with
-// the documented demo credentials and reading only through the API.
+// dataset — the same demo Members (roles from the org surface), the same four
+// demo Patients (names + birth dates), and the same Appointment clinic week
+// (same total, same per-status distribution) — by signing in on each origin
+// with the documented demo credentials and reading only through the API.
 //
 //   NESTJS_URL=http://localhost:3101 GO_URL=http://localhost:3102 bun tools/parity-check.mjs
 //
 // Seeds are applied first by their own commands (bun run seed / go run ./cmd/seed).
+// Per-day buckets are reported but not compared: each seed anchors its clinic
+// week on its own seed day, and development databases carry leftover fixture
+// bookings — the seed-named Patients and the Appointment totals/statuses are
+// the date-independent contract. For the full clean proof, run both seeds on
+// fresh databases and point NESTJS_URL/GO_URL at those origins.
 
 const ORIGINS = [
   { name: 'NestJS · MongoDB', url: process.env.NESTJS_URL ?? 'http://localhost:3101' },
@@ -14,8 +20,28 @@ const ORIGINS = [
 ];
 const CREDENTIALS = { email: 'owner@demo.careops', password: 'careops-demo-1' };
 
+// The four demo Patients both seeds create (apps/api/src/seed.ts and
+// apps/api-go/cmd/seed).
+const SEED_PATIENT_NAMES = ['Ada Lovelace', 'Grace Hopper', 'Alan Turing', 'Katherine Johnson'];
+
 const failures = [];
 let baseline = null;
+
+// Order-insensitive deep comparison: the backends emit their maps in
+// different key orders (Mongo cursor vs Postgres scan), which must not read
+// as a difference.
+const sortDeep = (value) => {
+  if (Array.isArray(value))
+    return value.map(sortDeep).sort((a, b) => (JSON.stringify(a) < JSON.stringify(b) ? -1 : 1));
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .map((key) => [key, sortDeep(value[key])]),
+    );
+  }
+  return value;
+};
 
 for (const origin of ORIGINS) {
   const signIn = await fetch(`${origin.url}/api/auth/sign-in/email`, {
@@ -35,6 +61,10 @@ for (const origin of ORIGINS) {
 
   const me = await (await fetch(`${origin.url}/api/workspace/me`, { headers })).json();
   const org = await (await fetch(`${origin.url}/api/organizations/current`, { headers })).json();
+
+  // Follow every Patients page, keeping the demo-named Patients (name →
+  // dateOfBirth) and the fixture-named set (dev-database pollution tolerated).
+  const patientByName = new Map();
   const patientNames = new Set();
   let cursor = '';
   for (;;) {
@@ -44,56 +74,73 @@ for (const origin of ORIGINS) {
       })
     ).json();
     for (const p of page.items ?? []) {
-      patientNames.add(`${p.firstName} ${p.lastName}`);
+      const name = `${p.firstName} ${p.lastName}`;
+      patientByName.set(name, p.dateOfBirth);
+      patientNames.add(name);
     }
     if (!page.nextCursor || !page.hasMore) break;
     cursor = page.nextCursor;
   }
-  const patients = {
-    items: [...patientNames].map((name) => {
-      const [firstName, lastName] = name.split(' ');
-      return { firstName, lastName };
-    }),
-  };
+
+  // Follow every Appointments page for the total + per-status distribution.
+  const statusCounts = {};
+  let appointmentTotal = 0;
+  cursor = '';
+  for (;;) {
+    const page = await (
+      await fetch(`${origin.url}/api/appointments?limit=100${cursor ? `&cursor=${cursor}` : ''}`, {
+        headers,
+      })
+    ).json();
+    for (const a of page.items ?? []) {
+      appointmentTotal += 1;
+      statusCounts[a.status] = (statusCounts[a.status] ?? 0) + 1;
+    }
+    if (!page.nextCursor || !page.hasMore) break;
+    cursor = page.nextCursor;
+  }
+
   // The today report is time-sensitive (it counts appointments inside the
   // current UTC day, and fixture slots land wherever the loader put them),
   // so it is reported but not compared.
   const today = await (await fetch(`${origin.url}/api/reports/today`, { headers })).json();
 
+  const seedPatients = Object.fromEntries(
+    SEED_PATIENT_NAMES.filter((name) => patientByName.has(name)).map((name) => [
+      name,
+      patientByName.get(name),
+    ]),
+  );
   const snapshot = {
     orgName: me.organization.name,
     role: me.organization.role,
     members: org.members.map((m) => `${m.role}:${m.email}`).sort(),
-    // Compare only the fixture-prefixed patients: both orgs carry leftover
-    // demo/fixture patients from earlier runs whose newest-100 windows may
-    // differ; the loader's fixed 'Fix-cmp-*' names are the parity contract.
-    patients: [
-      ...new Set(
-        patients.items
-          .map((p) => `${p.firstName} ${p.lastName}`)
-          .filter((name) => name.startsWith('Fix-cmp-')),
-      ),
-    ].sort(),
+    // The seed contract: the four demo Patients (name → dateOfBirth) and the
+    // Appointment totals/statuses. Fixture-named Patients are compared as a
+    // set only — both dev orgs may carry leftover bookings from earlier runs.
+    seedPatients,
+    appointmentTotal,
+    statusCounts,
+    fixturePatients: [...patientNames].filter((n) => n.startsWith('Fix-cmp-')).sort(),
   };
 
   console.log(`\n${origin.name} (${origin.url})`);
   console.log(
-    `  org: ${snapshot.orgName} — ${snapshot.members.length} members, ${snapshot.patients.length} patients (fixture-named: ${snapshot.patients.length}), ${today.items.length} appointments today (reported, not compared)`,
-  );
-  console.log(
-    `  fixture names: ${snapshot.patients[0]} .. ${snapshot.patients[snapshot.patients.length - 1]}`,
+    `  org: ${snapshot.orgName} — ${snapshot.members.length} members, ${Object.keys(seedPatients).length}/4 seed Patients, ${appointmentTotal} appointments (${JSON.stringify(statusCounts)}), ${today.items.length} appointments today (reported, not compared)`,
   );
 
-  if (snapshot.patients.length === 0) {
-    failures.push(`${origin.name}: no patients — run the demo seed + parity-fixtures first`);
+  if (Object.keys(seedPatients).length === 0) {
+    failures.push(
+      `${origin.name}: no seed Patients found — run the demo seed on a fresh database first (bun run seed / go run ./cmd/seed)`,
+    );
     continue;
   }
   if (baseline === null) {
-    baseline = snapshot;
-  } else if (JSON.stringify(snapshot) !== JSON.stringify(baseline)) {
+    baseline = sortDeep(snapshot);
+  } else if (JSON.stringify(sortDeep(snapshot)) !== JSON.stringify(baseline)) {
     failures.push(`${origin.name}: demo dataset differs from the first backend`);
     console.log('  baseline:', JSON.stringify(baseline, null, 1));
-    console.log('  this one:', JSON.stringify(snapshot, null, 1));
+    console.log('  this one:', JSON.stringify(sortDeep(snapshot), null, 1));
   }
 }
 
