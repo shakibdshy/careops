@@ -31,7 +31,7 @@ import { createRequire } from 'node:module';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-const infraRequire = createRequire(new URL('../../infra/package.json', import.meta.url));
+const infraRequire = createRequire(new URL('../../packages/infra/package.json', import.meta.url));
 const { ECSClient, DescribeServicesCommand, ListServicesCommand } =
   infraRequire('@aws-sdk/client-ecs');
 

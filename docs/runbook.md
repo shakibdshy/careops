@@ -4,7 +4,7 @@ The deployed stack is three services behind one load balancer (ADR-0012,
 extended by ADR-0016): the web app, the reference API (NestJS · MongoDB), and
 the Go replica (Go · PostgreSQL). One hostname serves the web + reference API;
 a second hostname, when configured, serves the same web in front of the Go
-API. `infra/` holds the CDK stack; `.github/workflows/deploy.yml`
+API. `packages/infra/` holds the CDK stack; `.github/workflows/deploy.yml`
 ships every merge to main.
 
 ## What a deploy does
@@ -130,8 +130,8 @@ sign in with the demo credentials, badge reads **Go · PostgreSQL**.
 
 | thing                                                   | where                                          |
 | ------------------------------------------------------- | ---------------------------------------------- |
-| CDK stack (three tiers, host routing)                   | `infra/lib/careops-stack.ts`                   |
-| Stack assertions (19/19)                                | `infra/test/careops-stack.test.ts`             |
+| CDK stack (three tiers, host routing)                   | `packages/infra/lib/careops-stack.ts`          |
+| Stack assertions (19/19)                                | `packages/infra/test/careops-stack.test.ts`    |
 | Deploy workflow (build → push → deploy → smoke)         | `.github/workflows/deploy.yml`                 |
 | Smoke checks (edge health, SSR cache, backend routing)  | `tools/smoke.mjs`                              |
 | Go migrations (forward-only, run in-image before serve) | `apps/api-go/internal/db/migrations/`          |

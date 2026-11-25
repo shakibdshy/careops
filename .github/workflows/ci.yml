@@ -195,7 +195,7 @@ jobs:
       # credentials — env-agnostic synth, template asserted on disk. Deploys
       # only ever happen on main (deploy.yml), never on a PR.
       - name: CDK synth (env-agnostic, no credentials)
-        working-directory: infra
+        working-directory: packages/infra
         run: |
           bunx cdk synth -c target=aws --quiet
           test -f cdk.out/CareOpsStack.template.json

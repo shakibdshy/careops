@@ -25,7 +25,7 @@ export default tseslint.config(
       // still formats them; CI's per-package turbo lint never reaches tools/.
       'tools/**',
       // Floci deploy-proof harness (W3-T2): standalone node .mjs, no tsconfig coverage — same rationale as tools/.
-      'infra/scripts/**',
+      'packages/infra/scripts/**',
       // Production SSR entry (W3-T4): standalone node .mjs run by the web
       // container, not Vite-compiled app code — same rationale as tools/.
       'apps/web/server.mjs',
@@ -74,7 +74,7 @@ export default tseslint.config(
   {
     // CDK assertion tests use node:test, whose test() registration returns a
     // promise the runner owns — callers neither await nor handle it.
-    files: ['infra/test/**/*.ts'],
+    files: ['packages/infra/test/**/*.ts'],
     rules: {
       '@typescript-eslint/no-floating-promises': 'off',
     },
