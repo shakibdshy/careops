@@ -5,7 +5,6 @@
 package server
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -124,18 +123,10 @@ func (s *Server) AppointmentsControllerList(w http.ResponseWriter, r *http.Reque
 	query := r.URL.Query()
 
 	limit := parseLimit(r, 20, 100)
-	cursorID := pgtype.UUID{}
-	if raw := query.Get("cursor"); raw != "" {
-		decoded, err := base64Decode(raw)
-		if err != nil {
-			writeTaxonomy(w, http.StatusBadRequest, "cursor must be a valid pagination cursor")
-			return
-		}
-		cursorID = uuidParam(decoded)
-		if !cursorID.Valid {
-			writeTaxonomy(w, http.StatusBadRequest, "cursor must be a valid pagination cursor")
-			return
-		}
+	cursorAt, cursorID := parseAuditCursor(r)
+	if raw := query.Get("cursor"); raw != "" && (!cursorAt.Valid || !cursorID.Valid) {
+		writeTaxonomy(w, http.StatusBadRequest, "cursor must be a valid pagination cursor")
+		return
 	}
 
 	statusFilter := query.Get("status")
@@ -174,12 +165,13 @@ func (s *Server) AppointmentsControllerList(w http.ResponseWriter, r *http.Reque
 	err := db.OrgTx(ctx, s.cfg.Pool, org.OrganizationID, func(tx pgx.Tx) error {
 		var err error
 		rows, err = store.New(tx).ListAppointments(ctx, store.ListAppointmentsParams{
-			Cursor: cursorID,
-			Status: pgtype.Text{String: statusFilter, Valid: statusFilter != ""},
-			Member: memberFilter,
-			FromTs: pgtype.Timestamptz{Time: fromFilter, Valid: fromOK},
-			ToTs:   pgtype.Timestamptz{Time: toFilter, Valid: toOK},
-			Limit:  int32(limit + 1),
+			CursorAt: cursorAt,
+			CursorID: cursorID,
+			Status:   pgtype.Text{String: statusFilter, Valid: statusFilter != ""},
+			Member:   memberFilter,
+			FromTs:   pgtype.Timestamptz{Time: fromFilter, Valid: fromOK},
+			ToTs:     pgtype.Timestamptz{Time: toFilter, Valid: toOK},
+			Limit:    int32(limit + 1),
 		})
 		return err
 	})
@@ -188,14 +180,10 @@ func (s *Server) AppointmentsControllerList(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	writePatientPage(w, rows, limit,
-		func(row store.Appointment) string { return auth.UIDString(row.ID) },
+		func(row store.Appointment) string {
+			return encodeAuditCursor(row.CreatedAt.Time, auth.UIDString(row.ID))
+		},
 		func(row store.Appointment) any { return appointmentView(row) })
-}
-
-// base64Decode decodes the opaque id cursor.
-func base64Decode(raw string) (string, error) {
-	out, err := base64.RawURLEncoding.DecodeString(raw)
-	return string(out), err
 }
 
 // AppointmentsControllerCreate implements POST /api/appointments.

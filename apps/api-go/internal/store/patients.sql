@@ -13,13 +13,16 @@ SELECT * FROM patient
 WHERE id = $1 AND organization_id = $2;
 
 -- name: ListPatients :many
--- Keyset pagination (ADR-0008): newest-first per Organization, cursor is the
--- last item's id. NULLIF keeps an unset/empty request scope empty-handed.
+-- Keyset pagination (ADR-0008): newest-first per Organization. Postgres UUIDs
+-- are random (unlike Mongo ObjectIds), so "newest" is the (created_at, id)
+-- tuple; the cursor carries both. NULLIF keeps an unset/empty request scope
+-- empty-handed.
 SELECT * FROM patient
 WHERE organization_id = NULLIF(current_setting('app.organization_id', true), '')::uuid
-  AND ($1::uuid IS NULL OR id < $1::uuid)
-ORDER BY id DESC
-LIMIT $2;
+  AND (sqlc.narg('cursor_at')::timestamptz IS NULL
+       OR (created_at, id) < (sqlc.narg('cursor_at')::timestamptz, sqlc.narg('cursor_id')::uuid))
+ORDER BY created_at DESC, id DESC
+LIMIT sqlc.arg('limit');
 
 -- name: UpdatePatient :one
 UPDATE patient

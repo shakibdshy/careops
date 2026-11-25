@@ -200,20 +200,24 @@ func (q *Queries) ListAuditEntries(ctx context.Context, arg ListAuditEntriesPara
 const listPatients = `-- name: ListPatients :many
 SELECT id, organization_id, first_name, last_name, date_of_birth, phone, notes, contact_email, created_at, updated_at FROM patient
 WHERE organization_id = NULLIF(current_setting('app.organization_id', true), '')::uuid
-  AND ($1::uuid IS NULL OR id < $1::uuid)
-ORDER BY id DESC
-LIMIT $2
+  AND ($1::timestamptz IS NULL
+       OR (created_at, id) < ($1::timestamptz, $2::uuid))
+ORDER BY created_at DESC, id DESC
+LIMIT $3
 `
 
 type ListPatientsParams struct {
-	Column1 pgtype.UUID
-	Limit   int32
+	CursorAt pgtype.Timestamptz
+	CursorID pgtype.UUID
+	Limit    int32
 }
 
-// Keyset pagination (ADR-0008): newest-first per Organization, cursor is the
-// last item's id. NULLIF keeps an unset/empty request scope empty-handed.
+// Keyset pagination (ADR-0008): newest-first per Organization. Postgres UUIDs
+// are random (unlike Mongo ObjectIds), so "newest" is the (created_at, id)
+// tuple; the cursor carries both. NULLIF keeps an unset/empty request scope
+// empty-handed.
 func (q *Queries) ListPatients(ctx context.Context, arg ListPatientsParams) ([]Patient, error) {
-	rows, err := q.db.Query(ctx, listPatients, arg.Column1, arg.Limit)
+	rows, err := q.db.Query(ctx, listPatients, arg.CursorAt, arg.CursorID, arg.Limit)
 	if err != nil {
 		return nil, err
 	}

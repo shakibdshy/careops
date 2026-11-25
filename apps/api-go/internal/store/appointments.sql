@@ -22,12 +22,13 @@ SELECT EXISTS (SELECT 1 FROM organization_member WHERE id = $1 AND organization_
 -- status, provider, and a [from, to] start window.
 SELECT * FROM appointment
 WHERE organization_id = NULLIF(current_setting('app.organization_id', true), '')::uuid
-  AND (sqlc.narg('cursor')::uuid IS NULL OR id < sqlc.narg('cursor')::uuid)
+  AND (sqlc.narg('cursor_at')::timestamptz IS NULL
+       OR (created_at, id) < (sqlc.narg('cursor_at')::timestamptz, sqlc.narg('cursor_id')::uuid))
   AND (sqlc.narg('status')::text IS NULL OR status = sqlc.narg('status')::text)
   AND (sqlc.narg('member')::uuid IS NULL OR provider_member_id = sqlc.narg('member')::uuid)
   AND (sqlc.narg('from_ts')::timestamptz IS NULL OR starts_at >= sqlc.narg('from_ts')::timestamptz)
   AND (sqlc.narg('to_ts')::timestamptz IS NULL OR starts_at <= sqlc.narg('to_ts')::timestamptz)
-ORDER BY id DESC
+ORDER BY created_at DESC, id DESC
 LIMIT sqlc.arg('limit');
 
 -- name: TransitionAppointment :one

@@ -28,19 +28,6 @@ func parseLimit(r *http.Request, def, max int) int {
 	return limit
 }
 
-// parseCursor decodes the opaque id cursor (base64 of a UUID string).
-func parseCursor(r *http.Request) pgtype.UUID {
-	raw := r.URL.Query().Get("cursor")
-	if raw == "" {
-		return pgtype.UUID{}
-	}
-	decoded, err := base64.RawURLEncoding.DecodeString(raw)
-	if err != nil {
-		return pgtype.UUID{}
-	}
-	return uuidParam(string(decoded))
-}
-
 func encodeCursor(id string) string {
 	if id == "" {
 		return ""
@@ -48,7 +35,8 @@ func encodeCursor(id string) string {
 	return base64.RawURLEncoding.EncodeToString([]byte(id))
 }
 
-// parseAuditCursor decodes the audit (at, id) keyset cursor.
+// parseAuditCursor decodes an (at, id) keyset cursor — shared by the audit,
+// patients and appointments lists.
 func parseAuditCursor(r *http.Request) (pgtype.Timestamptz, pgtype.UUID) {
 	raw := r.URL.Query().Get("cursor")
 	if raw == "" {

@@ -88,29 +88,32 @@ func (q *Queries) GetAppointment(ctx context.Context, arg GetAppointmentParams) 
 const listAppointments = `-- name: ListAppointments :many
 SELECT id, organization_id, patient_id, provider_member_id, starts_at, duration_minutes, status, notes, slot, created_at, updated_at FROM appointment
 WHERE organization_id = NULLIF(current_setting('app.organization_id', true), '')::uuid
-  AND ($1::uuid IS NULL OR id < $1::uuid)
-  AND ($2::text IS NULL OR status = $2::text)
-  AND ($3::uuid IS NULL OR provider_member_id = $3::uuid)
-  AND ($4::timestamptz IS NULL OR starts_at >= $4::timestamptz)
-  AND ($5::timestamptz IS NULL OR starts_at <= $5::timestamptz)
-ORDER BY id DESC
-LIMIT $6
+  AND ($1::timestamptz IS NULL
+       OR (created_at, id) < ($1::timestamptz, $2::uuid))
+  AND ($3::text IS NULL OR status = $3::text)
+  AND ($4::uuid IS NULL OR provider_member_id = $4::uuid)
+  AND ($5::timestamptz IS NULL OR starts_at >= $5::timestamptz)
+  AND ($6::timestamptz IS NULL OR starts_at <= $6::timestamptz)
+ORDER BY created_at DESC, id DESC
+LIMIT $7
 `
 
 type ListAppointmentsParams struct {
-	Cursor pgtype.UUID
-	Status pgtype.Text
-	Member pgtype.UUID
-	FromTs pgtype.Timestamptz
-	ToTs   pgtype.Timestamptz
-	Limit  int32
+	CursorAt pgtype.Timestamptz
+	CursorID pgtype.UUID
+	Status   pgtype.Text
+	Member   pgtype.UUID
+	FromTs   pgtype.Timestamptz
+	ToTs     pgtype.Timestamptz
+	Limit    int32
 }
 
 // Newest-first keyset (ADR-0008) with the contract's optional filters:
 // status, provider, and a [from, to] start window.
 func (q *Queries) ListAppointments(ctx context.Context, arg ListAppointmentsParams) ([]Appointment, error) {
 	rows, err := q.db.Query(ctx, listAppointments,
-		arg.Cursor,
+		arg.CursorAt,
+		arg.CursorID,
 		arg.Status,
 		arg.Member,
 		arg.FromTs,

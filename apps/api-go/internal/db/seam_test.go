@@ -63,10 +63,18 @@ func TestSeam(t *testing.T) {
 	// Cleanup must run while the owner connection is still open, so the
 	// truncate happens here rather than in a defer (t.Cleanup callbacks run
 	// after the test function's defers would have closed the connection).
+	// Cleanup is TARGETED: delete only the fixed test orgs and users. A full
+	// TRUNCATE here would wipe the shared dev database's demo data every run
+	// (learned the hard way — the demo org vanished under the browser check).
 	t.Cleanup(func() {
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
-		_, _ = owner.Exec(cleanupCtx, `TRUNCATE audit_entry, patient, organization_member, organization, app_user CASCADE`)
+		for _, id := range []string{orgA, orgB} {
+			_, _ = owner.Exec(cleanupCtx,
+				`DELETE FROM organization WHERE id = CAST($1 AS uuid)`, id)
+		}
+		_, _ = owner.Exec(cleanupCtx,
+			`DELETE FROM app_user WHERE id = CAST($1 AS uuid) OR id = CAST($2 AS uuid)`, orgA, orgB)
 		_ = owner.Close(cleanupCtx)
 	})
 

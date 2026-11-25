@@ -183,14 +183,15 @@ func (s *Server) PatientsControllerList(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	limit := parseLimit(r, 20, 100)
-	cursorID := parseCursor(r)
+	cursorAt, cursorID := parseAuditCursor(r)
 
 	var rows []store.Patient
 	err := db.OrgTx(ctx, s.cfg.Pool, org.OrganizationID, func(tx pgx.Tx) error {
 		var err error
 		rows, err = store.New(tx).ListPatients(ctx, store.ListPatientsParams{
-			Column1: cursorID,
-			Limit:   int32(limit + 1),
+			CursorAt: cursorAt,
+			CursorID: cursorID,
+			Limit:    int32(limit + 1),
 		})
 		return err
 	})
@@ -199,7 +200,7 @@ func (s *Server) PatientsControllerList(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	writePatientPage(w, rows, limit,
-		func(row store.Patient) string { return auth.UIDString(row.ID) },
+		func(row store.Patient) string { return encodeAuditCursor(row.CreatedAt.Time, auth.UIDString(row.ID)) },
 		func(row store.Patient) any { return patientView(row) })
 }
 
