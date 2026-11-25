@@ -84,7 +84,7 @@ packages/
           that every backend must pass (97 cases, both targets)
   api-go/ Go replica — the same REST contract from PostgreSQL (pgx + sqlc,
           RLS-guarded tenancy, Postgres-backed queue; ADR-0013–0020)
-infra/    AWS CDK stack — Fargate (API + web SSR + Go replica) behind one
+packages/infra/    AWS CDK stack — Fargate (API + web SSR + Go replica) behind one
           ALB, CloudFront, ElastiCache, RDS PostgreSQL, Secrets Manager; also
           deploys to the Floci AWS emulator
 tools/    Receipt runners — index explain, N+1, cache, k6, lighthouse,
@@ -136,7 +136,7 @@ CareOps ships two deployment shapes from one origin contract:
   everything else (`apps/web/api/ssr.mjs`, `apps/web/vercel.json`,
   `render.yaml` in the repo root; quick path in
   [docs/runbook.md](docs/runbook.md)).
-- **The AWS stack** (`infra/`) is the production-shaped definition: **three
+- **The AWS stack** (`packages/infra/`) is the production-shaped definition: **three
   stateless ECS Fargate services** behind **one ALB with no sticky
   sessions**, fronted by CloudFront — the web, the reference NestJS API on
   the main origin, and the Go replica on RDS PostgreSQL 17 behind a second
@@ -163,16 +163,16 @@ CareOps ships two deployment shapes from one origin contract:
   builds + pushes both images to ECR (sha-tagged), `cdk deploy`s, and
   smoke-checks the live origin. AWS auth is GitHub OIDC — no static keys;
   one idempotent bootstrap script
-  ([`infra/scripts/bootstrap-oidc.mjs`](infra/scripts/bootstrap-oidc.mjs))
+  ([`packages/infra/scripts/bootstrap-oidc.mjs`](packages/infra/scripts/bootstrap-oidc.mjs))
   sets up the role. Rollback is a manual re-deploy of a previous sha.
 - **Local AWS, zero cost** — the same stack `target=floci` deploys to the
   [Floci](https://floci.io) emulator (ECS/ELBv2/ECR/ElastiCache/Secrets
   Manager/CloudFormation as real Docker containers), so the entire AWS
   wiring is exercised locally before any bill
-  ([runbook](infra/README.md#deploy-to-floci-local-no-aws-account)).
+  ([runbook](packages/infra/README.md#deploy-to-floci-local-no-aws-account)).
 - **Template-tested** — `cdk synth` assertions fail the build on plaintext
   secrets, stickiness-on, wrong routing, or wrong health checks
-  (`infra/test/careops-stack.test.ts`).
+  (`packages/infra/test/careops-stack.test.ts`).
 
 ## Performance receipts
 

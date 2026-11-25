@@ -1,7 +1,7 @@
 # Ship-by-merge (W3-T5, ADR-0012): on every merge to main, run the repo gates,
 # build + push BOTH images to ECR, `cdk deploy` the stack, then smoke-check the
 # live origin. AWS auth is GitHub OIDC — the workflow assumes a deploy role;
-# no static AWS access keys live in the repo or its secrets (see infra/README.md
+# no static AWS access keys live in the repo or its secrets (see packages/infra/README.md
 # "OIDC pipeline" for the one-time operator setup: identity provider, trust
 # policy, and the repo variables this workflow reads).
 #
@@ -94,7 +94,7 @@ jobs:
           docker push "$REGISTRY/careops-api-go:$IMAGE_TAG"
 
       - name: Deploy the stack
-        working-directory: infra
+        working-directory: packages/infra
         env:
           # Certificate + domain are optional: set the repo variables for a
           # real named deploy. They also pin the API's same-origin auth config.

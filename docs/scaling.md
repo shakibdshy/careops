@@ -189,7 +189,7 @@ on the deployed topology — and say plainly what is still pending a live run.
 
 ## Multi-replica on AWS: the deployed topology (ADR-0012, W3-T3)
 
-The CDK stack ([`infra/`](../infra/README.md)) deploys the diagram above as
+The CDK stack ([`packages/infra/`](../packages/infra/README.md)) deploys the diagram above as
 real infrastructure: an internet-facing **ALB** (stickiness disabled, asserted
 in the template tests) routing `/api/*` to an **ECS Fargate** service — each
 replica 0.5 vCPU / 1 GB in private subnets — reading MongoDB **Atlas** via a
