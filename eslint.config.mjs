@@ -29,6 +29,10 @@ export default tseslint.config(
       // Production SSR entry (W3-T4): standalone node .mjs run by the web
       // container, not Vite-compiled app code — same rationale as tools/.
       'apps/web/server.mjs',
+      // Vercel adapter (Render + Vercel deploy path): a standalone node .mjs
+      // function Vercel runs as-is — not Vite-compiled app code, same
+      // rationale as tools/.
+      'apps/web/api/**',
     ],
   },
   eslint.configs.recommended,

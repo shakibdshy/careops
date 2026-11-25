@@ -127,18 +127,24 @@ languages. Demo credentials work on both: `owner@demo.careops` /
 
 ## Deployment — all-AWS, in-repo CDK
 
-CareOps deploys as **three stateless ECS Fargate services** behind **one ALB
-with no sticky sessions**, fronted by CloudFront for TLS and static-asset
-caching: the TanStack Start SSR web server (`/*`), the reference NestJS API
-(`/api/*` on the web origin), and the **Go replica on its own RDS PostgreSQL**
-(`/api/*` on the second origin when `GO_DOMAIN_NAME` is set — host-based
-routing, ADR-0016). MongoDB Atlas is the only service outside AWS; Redis is
-ElastiCache; the Go tier's database is RDS PostgreSQL 17 in the private
-subnets with credentials generated into Secrets Manager; all secrets resolve
-at task runtime, never in the image. Full story:
-[ADR-0012](docs/adr/0012-aws-deployment-architecture.md) and
-[ADR-0016](docs/adr/0016-host-based-routing-two-backends-one-origin-shape.md);
-deployment runbook: [docs/runbook.md](docs/runbook.md).
+CareOps ships two deployment shapes from one origin contract:
+
+- **The live demo** runs the web on **Vercel** and the Go replica on
+  **Render** (its own Render PostgreSQL + Key Value): one catch-all Vercel
+  function proxies `/api/*` to the Render service — same-origin for the
+  browser, so cookies stay first-party — and runs the SSR handler for
+  everything else (`apps/web/api/ssr.mjs`, `apps/web/vercel.json`,
+  `render.yaml` in the repo root; quick path in
+  [docs/runbook.md](docs/runbook.md)).
+- **The AWS stack** (`infra/`) is the production-shaped definition: **three
+  stateless ECS Fargate services** behind **one ALB with no sticky
+  sessions**, fronted by CloudFront — the web, the reference NestJS API on
+  the main origin, and the Go replica on RDS PostgreSQL 17 behind a second
+  origin via host-based routing (ADR-0016). MongoDB Atlas is the only
+  service outside AWS; Redis is ElastiCache; database credentials are
+  generated into Secrets Manager; secrets resolve at task runtime, never in
+  the image. Full story: [ADR-0012](docs/adr/0012-aws-deployment-architecture.md),
+  [ADR-0016](docs/adr/0016-host-based-routing-two-backends-one-origin-shape.md).
 
 - **Same-origin by construction** — one domain serves both `/*` and `/api/*`,
   so BetterAuth cookies and CSRF work unchanged (no CORS, no cross-site

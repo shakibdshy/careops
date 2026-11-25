@@ -93,6 +93,39 @@ style artifacts are not destroyed by the stack; delete them from the console
 if the account is being cleaned out. MongoDB Atlas is an external service —
 pause or delete it in Atlas's own console.
 
+## Quick path: Render + Vercel (the live demo)
+
+The AWS stack above is the production-shaped definition; the live demo links
+run on Render (the Go API) and Vercel (the web), which needs no AWS
+credential. Everything is in-repo:
+
+- **`render.yaml`** (repo root) — a Render Blueprint: the Go Docker image
+  (migrations apply before serving), Render PostgreSQL, and Render Key Value
+  for the report cache. Render → New → Blueprint → this repo. Fill the two
+  `sync: false` vars with the Vercel origin (both `BETTER_AUTH_URL` and
+  `TRUSTED_ORIGINS` = `https://<your-web>.vercel.app` — sign-in on the web
+  sends that origin, and the Go auth plane rejects untrusted origins).
+  Note: Render's free PostgreSQL is deleted after 30 days; upgrade the plan
+  to keep demo data. Single-user database is supported: FORCE RLS
+  (migration 0009) keeps the org guard load-bearing on the master role.
+- **`apps/web/vercel.json` + `apps/web/api/ssr.mjs`** — the Vercel adapter:
+  one catch-all function in the ALB's place. `/api/*` proxies to the Render
+  Go service (same-origin, first-party cookies), everything else runs the
+  SSR handler; `/assets/*` stays static with immutable caching. Import the
+  repo on Vercel with **Root Directory `apps/web`**, framework "Other", and
+  one env var: `API_PROXY_TARGET = https://<go-service>.onrender.com`.
+- **Proof before deploy**: `bun tools/prove-vercel-adapter.mjs` drives the
+  exact function Vercel runs against the local Go stack — health proxy,
+  sign-up with surviving cookies, SSR + no-store, deep route, authenticated
+  read (receipt: `tools/receipts/vercel-adapter-proof.json`).
+
+Order: deploy Render first (gives the Go URL) → set `API_PROXY_TARGET` on
+Vercel and deploy → set Render's `BETTER_AUTH_URL`/`TRUSTED_ORIGINS` to the
+Vercel origin (Render redeploys). Then seed the live database
+(`DATABASE_URL=<render external url> CONTRACT_OPENAPI_DIR=apps/api-go/../../packages/contract/openapi go run ./apps/api-go/cmd/seed`
+from a checkout), and verify: `BASE_URL=https://<web>.vercel.app bun tools/smoke.mjs`,
+sign in with the demo credentials, badge reads **Go · PostgreSQL**.
+
 ## Where things live
 
 | thing                                                   | where                                          |

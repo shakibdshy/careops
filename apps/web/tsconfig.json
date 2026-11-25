@@ -1,6 +1,6 @@
 {
   "extends": "../../tsconfig.base.json",
-  "include": ["**/*.ts", "**/*.tsx"],
+  "include": ["**/*.ts", "**/*.tsx", "api/**/*.mjs"],
   "compilerOptions": {
     "target": "ES2022",
     "jsx": "react-jsx",
