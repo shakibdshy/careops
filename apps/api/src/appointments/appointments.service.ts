@@ -1,7 +1,13 @@
-import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectConnection } from '@nestjs/mongoose';
-import { ConflictException } from '@nestjs/common';
-import type { Connection, QueryFilter } from 'mongoose';
+import { Types, type Connection, type QueryFilter } from 'mongoose';
 import { Queue } from 'bullmq';
 import type {
   Appointment,
@@ -132,6 +138,13 @@ export class AppointmentsService {
     const provider = orgMembers.find((member) => member.id === dto.memberId);
     if (!provider) {
       throw new NotFoundException('Provider member not found in organization');
+    }
+    // The shared booking schema accepts both id schemes (the web form drives
+    // the Go replica's UUID patients too); this API is Mongo-shaped, so a
+    // non-ObjectId patientId is a field error here — never a Mongoose
+    // CastError surfacing as a 500.
+    if (!Types.ObjectId.isValid(dto.patientId)) {
+      throw new BadRequestException('patientId must be a 24-char hex id');
     }
     const patient = await this.patientRepository.findOne(context, { _id: dto.patientId });
     if (!patient) {

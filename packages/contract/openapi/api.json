@@ -1560,7 +1560,7 @@
         "properties": {
           "patientId": {
             "type": "string",
-            "pattern": "^[0-9a-fA-F]{24}$"
+            "pattern": "^[0-9a-fA-F]{24}$|^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
           },
           "memberId": {
             "type": "string",

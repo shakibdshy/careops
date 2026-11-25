@@ -19,9 +19,16 @@ export const appointmentStatusSchema = z.enum([
 ]);
 export type AppointmentStatus = z.infer<typeof appointmentStatusSchema>;
 
-// Patient ids are Mongoose ObjectIds; Provider ids come from BetterAuth's
-// adapter-owned member collection (UUIDs by default) and stay opaque.
-const objectIdHex = z.string().regex(/^[0-9a-fA-F]{24}$/, 'must be a 24-char hex id');
+// Patient ids are Mongoose ObjectIds on the reference API and PostgreSQL
+// UUIDs on the Go replica; Provider ids come from BetterAuth's
+// adapter-owned member collection (UUIDs by default) and stay opaque. The
+// booking form validates both schemes so one UI drives either backend.
+const patientIdSchema = z
+  .string()
+  .regex(
+    /^[0-9a-fA-F]{24}$|^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/,
+    'must be a 24-char hex id or a UUID',
+  );
 const memberIdSchema = z.string().min(1).max(128);
 
 /** A scheduled block of a Provider's time for one Patient (glossary). */
@@ -41,7 +48,7 @@ export const appointmentSchema = z.object({
 export type Appointment = z.infer<typeof appointmentSchema>;
 
 export const createAppointmentSchema = z.object({
-  patientId: objectIdHex,
+  patientId: patientIdSchema,
   memberId: memberIdSchema,
   start: z.iso.datetime({ offset: true }),
   durationMinutes: z.number().int().min(15).max(480),

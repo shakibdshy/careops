@@ -34,10 +34,19 @@ describe('createAppointmentSchema (booking validation)', () => {
     }
   });
 
-  it('requires a 24-char hex Patient id', () => {
+  it('requires a 24-char hex or UUID Patient id (both backend id schemes)', () => {
     for (const patientId of ['nothex', 'z'.repeat(24), 'a'.repeat(23)]) {
       expect(createAppointmentSchema.safeParse({ ...validBooking, patientId }).success).toBe(false);
     }
+    // The Go replica's PostgreSQL UUIDs pass the same schema (one web form
+    // drives both backends); a UUID is a 400 field error only on this API's
+    // service path, which guards for it before the Mongo lookup.
+    expect(
+      createAppointmentSchema.safeParse({
+        ...validBooking,
+        patientId: '3f2c9a58-7d14-4b6e-9f0a-1c2d3e4f5a6b',
+      }).success,
+    ).toBe(true);
   });
 
   it('requires a non-empty Provider member id of at most 128 chars', () => {
