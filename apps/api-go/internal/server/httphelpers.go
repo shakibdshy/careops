@@ -28,13 +28,6 @@ func parseLimit(r *http.Request, def, max int) int {
 	return limit
 }
 
-func encodeCursor(id string) string {
-	if id == "" {
-		return ""
-	}
-	return base64.RawURLEncoding.EncodeToString([]byte(id))
-}
-
 // parseAuditCursor decodes an (at, id) keyset cursor — shared by the audit,
 // patients and appointments lists.
 func parseAuditCursor(r *http.Request) (pgtype.Timestamptz, pgtype.UUID) {
@@ -62,7 +55,8 @@ func encodeAuditCursor(at time.Time, id string) string {
 }
 
 // writePatientPage renders a keyset page: one extra row was fetched purely
-// to compute hasMore, so trim before writing.
+// to compute hasMore, so trim before writing. keyOf yields the row's final
+// opaque cursor — the callers encode the (created_at, id) key themselves.
 func writePatientPage[T any](
 	w http.ResponseWriter,
 	rows []T,
@@ -80,7 +74,7 @@ func writePatientPage[T any](
 	}
 	page := map[string]any{"items": items, "hasMore": hasMore}
 	if hasMore && len(rows) > 0 {
-		page["nextCursor"] = encodeCursor(keyOf(rows[len(rows)-1]))
+		page["nextCursor"] = keyOf(rows[len(rows)-1])
 	}
 	writeJSON(w, http.StatusOK, page)
 }
