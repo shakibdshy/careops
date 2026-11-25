@@ -1,0 +1,46 @@
+{
+  "scenario": "dashboard",
+  "generatedAt": "2026-11-25T10:54:06.380Z",
+  "baseUrl": "http://localhost:3101",
+  "cacheMode": "cold",
+  "vus": 10,
+  "duration": "30s",
+  "days": 30,
+  "iterations": 1090,
+  "failures": 0,
+  "httpReqDurationP95": 36.72,
+  "endpoints": {
+    "daily-volume": {
+      "count": 1090,
+      "avg": 30.75,
+      "med": 31.76,
+      "p90": 38.79,
+      "p95": 40.3,
+      "max": 43.88
+    },
+    "provider-utilization": {
+      "count": 1090,
+      "avg": 18.43,
+      "med": 18.38,
+      "p90": 23.4,
+      "p95": 24.78,
+      "max": 28.27
+    },
+    "status-breakdown": {
+      "count": 1090,
+      "avg": 13.44,
+      "med": 13.21,
+      "p90": 15.81,
+      "p95": 16.61,
+      "max": 21.92
+    },
+    "today": {
+      "count": 1090,
+      "avg": 11.94,
+      "med": 11.92,
+      "p90": 13.73,
+      "p95": 14.26,
+      "max": 17.46
+    }
+  }
+}

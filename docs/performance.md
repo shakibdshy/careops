@@ -185,16 +185,27 @@ report reads above are single-digit ms).
 ## 5. The two backends, same contract, measured side by side
 
 The Go replica (ADR-0013/0014) serves the identical HTTP contract from
-PostgreSQL. Both backends were measured on this machine with the same k6
-dashboard scenario (10 VUs, 30 s: the four report reads plus the patients
-list, warm caches), against the same demo dataset — 40 patients × 3
-appointments loaded through each API (tools/parity-fixtures.mjs, receipts in
-`tools/receipts/comparison/`).
+PostgreSQL. Both backends were measured on this machine with the full k6
+suite (`tools/k6/run.mjs`, 10 VUs, 30 s per scenario): the dashboard warm
+(cache settled), the dashboard cold (the cache generation bumped every 20 ms
+so every cached read recomputes — ADR-0011's invalidation path), and the
+cursor-paginated appointments list (first page + two cursor-deep pages,
+never cached) — against the same demo dataset — 40 patients × 3 appointments
+loaded through each API (tools/parity-fixtures.mjs, receipts in
+`tools/receipts/comparison/go/` and `/nestjs/`, combined `summary.json`).
 
-| backend          | requests/s |     p95 |  median | failures |
-| ---------------- | ---------: | ------: | ------: | -------- |
-| NestJS · MongoDB |      141.6 | 42.1 ms | 15.8 ms | 0        |
-| Go · PostgreSQL  |      173.1 | 13.4 ms |  6.8 ms | 0        |
+| backend — dashboard p95 |    warm |    cold | status-breakdown (control, warm) |
+| ----------------------- | ------: | ------: | -------------------------------: |
+| NestJS · MongoDB        | 41.7 ms | 40.3 ms |                          17.4 ms |
+| Go · PostgreSQL         | 14.9 ms | 15.9 ms |                           8.6 ms |
+
+| backend — cursor list p95 | first page | deep pages | failures |
+| ------------------------- | ---------: | ---------: | -------- |
+| NestJS · MongoDB          |    44.3 ms |    25.7 ms | 0        |
+| Go · PostgreSQL           |    18.9 ms |    12.0 ms | 0        |
+
+(The original single-scenario warm run — 141.6 vs 173.1 req/s, p95 42.1 vs
+13.4 ms — is preserved in `summary.json`'s history and the git log.)
 
 - The Go median is ~2.3× lower and p95 ~3× lower under this load. Part of
   that is the runtime (compiled binary vs JIT), part is the data plane
