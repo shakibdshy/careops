@@ -204,6 +204,9 @@ loaded through each API (tools/parity-fixtures.mjs, receipts in
 | NestJS · MongoDB          |    44.3 ms |    25.7 ms | 0        |
 | Go · PostgreSQL           |    18.9 ms |    12.0 ms | 0        |
 
+The same suite was also run **through the ALB-shaped local proxy**
+(`tools/alb-sim.mjs`, `comparison/proxy/`): list p95 45.4/25.3 ms (NestJS)
+vs 21.0/12.0 ms (Go) — one proxy hop over the native numbers, same story.
 (The original single-scenario warm run — 141.6 vs 173.1 req/s, p95 42.1 vs
 13.4 ms — is preserved in `summary.json`'s history and the git log.)
 

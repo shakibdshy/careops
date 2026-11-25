@@ -1,0 +1,49 @@
+{
+  "generatedAt": "2026-11-25T11:25:26.641Z",
+  "baseUrl": "http://localhost:8092",
+  "organizationId": "6af5ff08cc11c13a326a32ad",
+  "vus": 10,
+  "duration": "30s",
+  "days": 30,
+  "genBumpMs": 20,
+  "cachedEndpoints": [
+    {
+      "endpoint": "daily-volume",
+      "warmP95": 43.24,
+      "coldP95": 40.89,
+      "savedMs": -2.35,
+      "ratio": 0.95,
+      "normalizedRatio": 0.98
+    },
+    {
+      "endpoint": "provider-utilization",
+      "warmP95": 25.7,
+      "coldP95": 25.11,
+      "savedMs": -0.59,
+      "ratio": 0.98,
+      "normalizedRatio": 1.01
+    }
+  ],
+  "controlEndpoints": [
+    {
+      "endpoint": "status-breakdown",
+      "warmP95": 16.74,
+      "coldP95": 16.29,
+      "savedMs": -0.45,
+      "ratio": 0.97
+    },
+    {
+      "endpoint": "today",
+      "warmP95": 14.52,
+      "coldP95": 14.17,
+      "savedMs": -0.35,
+      "ratio": 0.98
+    }
+  ],
+  "controlDriftFactor": 0.97,
+  "normalization": "normalizedRatio = (coldP95/warmP95) / controlDriftFactor; controlDriftFactor is the geometric mean of the always-live controls' cold/warm ratios (between-run drift, no cache effect). See tools/bench-cache.mjs for the controlled per-request delta.",
+  "list": {
+    "firstPageP95": 45.37,
+    "deepPageP95": 25.25
+  }
+}
