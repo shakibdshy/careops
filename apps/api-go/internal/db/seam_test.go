@@ -245,4 +245,152 @@ func TestSeam(t *testing.T) {
 			t.Fatalf("audit UPDATE err = %v, want permission denied (42501)", err)
 		}
 	})
+
+	// Go-T12: the Conflict rule as a database guarantee under concurrency —
+	// many bookings of the same Provider's slot arriving at the same instant
+	// commit exactly one Appointment (and exactly one Audit Entry); the losers
+	// abort on the exclusion constraint with no partial rows.
+	t.Run("concurrent conflicting bookings commit exactly one appointment", func(t *testing.T) {
+		provider := "55555555-5555-4555-8555-555555555555"
+		slot := time.Now().UTC().Truncate(time.Minute).Add(72 * time.Hour)
+		cleanup := func() {
+			for _, stmt := range []string{
+				`DELETE FROM appointment WHERE organization_id = '` + orgA + `' AND provider_member_id = '` + provider + `'`,
+				`DELETE FROM audit_entry WHERE entity_id = '` + provider + `' AND entity = 'appointment'`,
+				`DELETE FROM organization_member WHERE id = '` + provider + `'`,
+				`DELETE FROM app_user WHERE id = '` + provider + `'`,
+			} {
+				_, _ = owner.Exec(ctx, stmt)
+			}
+		}
+		cleanup()
+		t.Cleanup(cleanup)
+		// A distinct Provider Member (its own user — (organization_id, user_id)
+		// is unique, and orgA's owner member already exists from the seed).
+		if _, err := owner.Exec(ctx,
+			`INSERT INTO app_user (id, email, name, password_hash)
+			 VALUES ($1, 'seam-provider@t.test', 'P', 'x') ON CONFLICT DO NOTHING`, provider); err != nil {
+			t.Fatalf("seed provider user: %v", err)
+		}
+		if _, err := owner.Exec(ctx,
+			`INSERT INTO organization_member (id, organization_id, user_id, role)
+			 VALUES ($1, $2, $1, 'admin') ON CONFLICT DO NOTHING`, provider, orgA); err != nil {
+			t.Fatalf("seed provider member: %v", err)
+		}
+
+		const attempts = 8
+		results := make(chan error, attempts)
+		for i := 0; i < attempts; i++ {
+			go func() {
+				results <- OrgTx(ctx, pool, orgA, func(tx pgx.Tx) error {
+					var id string
+					if err := tx.QueryRow(ctx,
+						`INSERT INTO appointment (organization_id, patient_id, provider_member_id, starts_at, duration_minutes, status)
+						 VALUES ($1, (SELECT id FROM patient WHERE organization_id = $1 LIMIT 1), $2, $3, 30, 'SCHEDULED')
+						 RETURNING id::text`, orgA, provider, slot).Scan(&id); err != nil {
+						return err
+					}
+					_, err := tx.Exec(ctx,
+						`INSERT INTO audit_entry (organization_id, actor_id, actor_email, action, entity, entity_id)
+						 VALUES ($1, $1, 'seam-a@t.test', 'create', 'appointment', $2)`, orgA, id)
+					return err
+				})
+			}()
+		}
+		wins, conflicts := 0, 0
+		for i := 0; i < attempts; i++ {
+			if err := <-results; err == nil {
+				wins++
+			} else if pgErrCode(err) == "23P01" {
+				conflicts++
+			} else {
+				t.Fatalf("unexpected booking error: %v", err)
+			}
+		}
+		if wins != 1 || conflicts != attempts-1 {
+			t.Fatalf("concurrent bookings: %d wins / %d conflicts, want 1 / %d", wins, conflicts, attempts-1)
+		}
+		var appointments, entries int
+		if err := owner.QueryRow(ctx,
+			`SELECT count(*) FROM appointment WHERE organization_id = $1 AND provider_member_id = $2`, orgA, provider).Scan(&appointments); err != nil {
+			t.Fatal(err)
+		}
+		// The winner's Audit Entry: entity_id is the winning Appointment's id.
+		if err := owner.QueryRow(ctx,
+			`SELECT count(*) FROM audit_entry WHERE organization_id = $1 AND entity = 'appointment'
+			   AND entity_id IN (SELECT id FROM appointment WHERE organization_id = $1 AND provider_member_id = $2)`, orgA, provider).Scan(&entries); err != nil {
+			t.Fatal(err)
+		}
+		if appointments != 1 || entries != 1 {
+			t.Fatalf("database state after the race: appointments=%d audit=%d, want 1 / 1", appointments, entries)
+		}
+	})
+
+	// Go-T13: state-based claiming is the at-least-once guarantee's dedupe —
+	// two worker replicas claiming due jobs at the same instant must never
+	// both win the same job (FOR UPDATE SKIP LOCKED).
+	t.Run("two concurrent claimers never claim the same job", func(t *testing.T) {
+		var jobID int64
+		if err := owner.QueryRow(ctx,
+			`INSERT INTO notification_job (kind, payload) VALUES ('appointment.reminder', '{"organizationId":"`+orgA+`","patientId":"`+orgA+`","appointmentId":"`+orgA+`","kind":"appointment.reminder"}')
+			 RETURNING id`).Scan(&jobID); err != nil {
+			t.Fatalf("seed job: %v", err)
+		}
+		t.Cleanup(func() {
+			_, _ = owner.Exec(ctx, `DELETE FROM notification_job WHERE id = $1`, jobID)
+		})
+
+		claim := func() (int64, error) {
+			var id int64
+			err := OrgTx(ctx, pool, orgA, func(tx pgx.Tx) error {
+				// The worker's claim shape: due pending jobs, FIFO, locked.
+				rows, err := tx.Query(ctx,
+					`UPDATE notification_job SET state = 'processing', attempts = attempts + 1
+					 WHERE id IN (
+					   SELECT id FROM notification_job
+					   WHERE state = 'pending' AND run_at <= now()
+					   ORDER BY id
+					   FOR UPDATE SKIP LOCKED
+					   LIMIT 1
+					 )
+					 RETURNING id`)
+				if err != nil {
+					return err
+				}
+				defer rows.Close()
+				for rows.Next() {
+					if err := rows.Scan(&id); err != nil {
+						return err
+					}
+				}
+				return rows.Err()
+			})
+			return id, err
+		}
+
+		type claimResult struct {
+			id  int64
+			err error
+		}
+		done := make(chan claimResult, 2)
+		for i := 0; i < 2; i++ {
+			go func() {
+				id, err := claim()
+				done <- claimResult{id, err}
+			}()
+		}
+		claimed := []int64{}
+		for i := 0; i < 2; i++ {
+			r := <-done
+			if r.err != nil {
+				t.Fatalf("claim failed: %v", r.err)
+			}
+			if r.id != 0 {
+				claimed = append(claimed, r.id)
+			}
+		}
+		if len(claimed) != 1 || claimed[0] != jobID {
+			t.Fatalf("claimers got %v, want exactly [%d]", claimed, jobID)
+		}
+	})
 }
