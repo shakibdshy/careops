@@ -7,6 +7,7 @@
   "scripts": {
     "generate": "cd ../../apps/api && bun run dump:openapi",
     "check": "bun run generate && git diff --exit-code -- . && test -z \"$(git status --porcelain .)\"",
+    "test": "if [ -z \"$CONTRACT_BASE_URL\" ]; then echo 'conformance suite: skipped — set CONTRACT_BASE_URL (+ CONTRACT_TARGET) or run the CI conformance steps'; else bun test; fi",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
