@@ -70,19 +70,28 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 }
 
 // Health reports status, the shared service identity, the implementation,
-// and Postgres reachability under the `postgres` dependency key (the stated
-// parity exception — the reference reports mongo/redis, this backend
-// reports postgres). Unauthenticated by design, like the reference.
+// and every data-plane dependency: Postgres under the `postgres` key (the
+// stated parity exception — the reference reports mongo) and Redis under
+// `redis` like the reference, since the report cache is a real dependency
+// here too. Unauthenticated by design, like the reference.
 func (s *Server) HealthControllerCheck(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 500*time.Millisecond)
 	defer cancel()
 
 	postgres := "up"
+	redisUp := "up"
 	status := "ok"
 	if err := s.cfg.Pool.Ping(ctx); err != nil {
 		slog.Warn("postgres unreachable", "err", err)
 		postgres = "down"
 		status = "degraded"
+	}
+	if s.rdb != nil {
+		if err := s.rdb.Ping(ctx).Err(); err != nil {
+			slog.Warn("redis unreachable", "err", err)
+			redisUp = "down"
+			status = "degraded"
+		}
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{
@@ -90,6 +99,7 @@ func (s *Server) HealthControllerCheck(w http.ResponseWriter, r *http.Request) {
 		"service":        s.cfg.ServiceName,
 		"implementation": s.cfg.Implementation,
 		"postgres":       postgres,
+		"redis":          redisUp,
 	})
 }
 
