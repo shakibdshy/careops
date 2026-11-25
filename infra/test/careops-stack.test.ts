@@ -239,7 +239,11 @@ test('target-tracking policies scale every tier on CPU; request-count tracks lis
   assert.notEqual(labels[0], labels[1], 'API and web policies must watch different targets');
 
   // Naming the Go host adds the listener rule and its request-count policy.
-  const routed = synth({ goDomainName: 'go.careops.example.com' });
+  const routed = synth({
+    certificateArn: CERT_ARN,
+    domainName: 'app.careops.example.com',
+    goDomainName: 'go.careops.example.com',
+  });
   const routedPolicies = Object.values(
     routed.findResources('AWS::ApplicationAutoScaling::ScalingPolicy') as Record<
       string,
@@ -261,6 +265,32 @@ test('target-tracking policies scale every tier on CPU; request-count tracks lis
     ).length,
     3,
     'Go request-count policy appears with the named host',
+  );
+
+  // Sign-in happens on BOTH origins (the web is host-routed to either API),
+  // so the Go service must trust both named origins — a browser sign-in on
+  // the Go link sends that link's origin.
+  const taskDefs = Object.values(
+    routed.findResources('AWS::ECS::TaskDefinition') as Record<
+      string,
+      {
+        Properties: {
+          ContainerDefinitions: Array<{
+            Name?: string;
+            Environment?: Array<{ Name: string; Value: string }>;
+          }>;
+        };
+      }
+    >,
+  );
+  const goEnv = taskDefs
+    .flatMap((td) => td.Properties.ContainerDefinitions)
+    .find((c) => c.Name === 'api-go')?.Environment;
+  const trusted = goEnv?.find((kv) => kv.Name === 'TRUSTED_ORIGINS')?.Value ?? '';
+  assert.ok(
+    trusted.includes('https://app.careops.example.com') &&
+      trusted.includes('https://go.careops.example.com'),
+    `Go service trusts both origins, got: ${trusted}`,
   );
 });
 

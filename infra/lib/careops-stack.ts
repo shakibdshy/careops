@@ -236,6 +236,9 @@ export class CareOpsStack extends Stack {
     // The public app origin, when the operator names a custom domain: feeds
     // better-auth's cookie policy + trusted origins for same-origin auth.
     const appUrl = props.domainName ? `https://${props.domainName}` : undefined;
+    // The Go origin (ADR-0016): the web is served there too, so sign-in on
+    // the Go link sends THAT origin — it must be trusted by the Go service.
+    const goAppUrl = props.goDomainName ? `https://${props.goDomainName}` : undefined;
     const redisUrl =
       props.redisUrl ??
       (props.target === 'floci'
@@ -349,7 +352,16 @@ export class CareOpsStack extends Stack {
         IMPLEMENTATION: 'go',
         CONTRACT_OPENAPI_DIR: '/app/openapi',
         REDIS_URL: redisUrl,
-        ...(appUrl ? { BETTER_AUTH_URL: appUrl, TRUSTED_ORIGINS: appUrl } : {}),
+        // The web is served on BOTH origins (host routing, ADR-0016); sign-in
+        // on the Go link sends that link's origin, so both named origins are
+        // trusted — csv, which the Go config splits. BETTER_AUTH_URL names
+        // this tier's own origin.
+        ...(appUrl || goAppUrl
+          ? {
+              BETTER_AUTH_URL: goAppUrl ?? appUrl,
+              TRUSTED_ORIGINS: [appUrl, goAppUrl].filter(Boolean).join(','),
+            }
+          : {}),
       },
       secrets: {
         // Both URLs point at the same RDS master connection: the binary
